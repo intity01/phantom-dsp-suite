@@ -1,14 +1,14 @@
 //! Pro-Q 4 Reference Spectrum EQ Match Workflow Bar
 //! Allows capturing or recording a Reference Spectrum (or snapshotting Pre-EQ), recording the
 //! Current Track spectrum, adjusting Band Count (1..12) and Match Amount (10..100%), and applying
-//! the fitted parametric curve directly into unused EQ band slots via `ParamSetter`.
+//! the fitted parametric curve directly into unused EQ band slots via `LiveSetter`.
 
 use super::EditorState;
+use crate::live_mirror::LiveSetter;
 use crate::params::{
     ChannelPlacementParam, FilterSlopeParam, FilterTypeParam, PhantomEqParams, NUM_BANDS,
 };
 use crate::state::EqPresetSnapshot;
-use nih_plug::prelude::ParamSetter;
 use nih_plug_egui::egui::{self, FontId, Margin, RichText, Ui};
 use phantom_dsp::FilterType;
 use phantom_ui::{
@@ -18,7 +18,7 @@ use phantom_ui::{
 
 pub fn draw_eq_match_bar(
     ui: &mut Ui,
-    setter: &ParamSetter,
+    setter: &LiveSetter,
     params: &PhantomEqParams,
     state: &mut EditorState,
 ) {
@@ -36,7 +36,6 @@ pub fn draw_eq_match_bar(
                 );
                 ui.separator();
 
-                // 1. `[Record Ref]` toggle
                 let ref_frames = state.eq_match_engine.reference_frame_count();
                 let ref_lbl = if state.match_rec_ref {
                     format!("REC REF ({ref_frames})")
@@ -59,7 +58,9 @@ pub fn draw_eq_match_bar(
                                 TEXT_BRIGHT
                             }),
                     )
-                    .on_hover_text("Accumulate live input spectrum as the EQ Match Reference target")
+                    .on_hover_text(
+                        "Accumulate live input spectrum as the EQ Match Reference target",
+                    )
                     .clicked()
                 {
                     state.match_rec_ref = !state.match_rec_ref;
@@ -68,7 +69,6 @@ pub fn draw_eq_match_bar(
                     }
                 }
 
-                // 2. `[Use Pre as Ref]` instant snapshot button
                 if ui
                     .selectable_label(
                         false,
@@ -85,7 +85,6 @@ pub fn draw_eq_match_bar(
                         .set_reference_snapshot(state.spectrum_processor.pre_bins_db());
                 }
 
-                // 3. `[Record Track]` toggle
                 let cur_frames = state.eq_match_engine.current_frame_count();
                 let trk_lbl = if state.match_rec_track {
                     format!("REC TRACK ({cur_frames})")
@@ -117,7 +116,6 @@ pub fn draw_eq_match_bar(
                     }
                 }
 
-                // 4. `[Clear]` button
                 if ui
                     .selectable_label(
                         false,
@@ -136,7 +134,6 @@ pub fn draw_eq_match_bar(
 
                 ui.separator();
 
-                // 5. `Bands (1..12)` slider
                 ui.label(
                     RichText::new("Bands:")
                         .font(FontId::proportional(9.5))
@@ -154,7 +151,6 @@ pub fn draw_eq_match_bar(
                     state.match_max_bands = (bands_i32 as usize).clamp(1, 12);
                 }
 
-                // 6. `Amount (10..100%)` slider
                 ui.label(
                     RichText::new("Amount:")
                         .font(FontId::proportional(9.5))
@@ -169,7 +165,6 @@ pub fn draw_eq_match_bar(
 
                 ui.separator();
 
-                // 7. `[APPLY MATCH]` button
                 let ready = state.eq_match_engine.has_reference();
                 if ui
                     .selectable_label(
@@ -180,7 +175,7 @@ pub fn draw_eq_match_bar(
                             .color(if ready { ACCENT_GREEN } else { TEXT_DIMMED }),
                     )
                     .on_hover_text(
-                        "Fit parametric EQ bands to match Reference spectrum and write into unused slots",
+                        "Fit parametric EQ bands to match Reference spectrum into unused slots",
                     )
                     .clicked()
                     && ready
@@ -199,7 +194,7 @@ pub fn draw_eq_match_bar(
 }
 
 fn apply_matched_bands_to_params(
-    setter: &ParamSetter,
+    setter: &LiveSetter,
     params: &PhantomEqParams,
     state: &mut EditorState,
 ) {
@@ -212,7 +207,7 @@ fn apply_matched_bands_to_params(
 
     let mut last_created: Option<usize> = None;
     for spec in &specs[..count] {
-        let Some(slot_idx) = (0..NUM_BANDS).find(|&i| !params.bands[i].used.value()) else {
+        let Some(slot_idx) = (0..NUM_BANDS).find(|&i| !setter.read(&params.bands[i].used)) else {
             break;
         };
         let shape = match spec.filter_type {
@@ -223,47 +218,16 @@ fn apply_matched_bands_to_params(
             _ => FilterTypeParam::Bell,
         };
         let band = &params.bands[slot_idx];
-
-        setter.begin_set_parameter(&band.used);
-        setter.set_parameter(&band.used, true);
-        setter.end_set_parameter(&band.used);
-
-        setter.begin_set_parameter(&band.enabled);
-        setter.set_parameter(&band.enabled, true);
-        setter.end_set_parameter(&band.enabled);
-
-        setter.begin_set_parameter(&band.filter_type);
-        setter.set_parameter(&band.filter_type, shape);
-        setter.end_set_parameter(&band.filter_type);
-
-        setter.begin_set_parameter(&band.slope);
-        setter.set_parameter(&band.slope, FilterSlopeParam::Db12);
-        setter.end_set_parameter(&band.slope);
-
-        setter.begin_set_parameter(&band.placement);
-        setter.set_parameter(&band.placement, ChannelPlacementParam::Stereo);
-        setter.end_set_parameter(&band.placement);
-
-        setter.begin_set_parameter(&band.frequency);
-        setter.set_parameter(&band.frequency, spec.freq_hz.clamp(10.0, 30000.0));
-        setter.end_set_parameter(&band.frequency);
-
-        setter.begin_set_parameter(&band.gain);
-        setter.set_parameter(&band.gain, spec.gain_db.clamp(-30.0, 30.0));
-        setter.end_set_parameter(&band.gain);
-
-        setter.begin_set_parameter(&band.q);
-        setter.set_parameter(&band.q, spec.q.clamp(0.1, 30.0));
-        setter.end_set_parameter(&band.q);
-
-        setter.begin_set_parameter(&band.dynamic_range);
-        setter.set_parameter(&band.dynamic_range, 0.0);
-        setter.end_set_parameter(&band.dynamic_range);
-
-        setter.begin_set_parameter(&band.spectral_dynamics);
-        setter.set_parameter(&band.spectral_dynamics, false);
-        setter.end_set_parameter(&band.spectral_dynamics);
-
+        setter.set_once(&band.used, true);
+        setter.set_once(&band.enabled, true);
+        setter.set_once(&band.filter_type, shape);
+        setter.set_once(&band.slope, FilterSlopeParam::Db12);
+        setter.set_once(&band.placement, ChannelPlacementParam::Stereo);
+        setter.set_once(&band.frequency, spec.freq_hz.clamp(10.0, 30000.0));
+        setter.set_once(&band.gain, spec.gain_db.clamp(-30.0, 30.0));
+        setter.set_once(&band.q, spec.q.clamp(0.1, 30.0));
+        setter.set_once(&band.dynamic_range, 0.0);
+        setter.set_once(&band.spectral_dynamics, false);
         last_created = Some(slot_idx);
     }
 
@@ -271,6 +235,6 @@ fn apply_matched_bands_to_params(
         state.selected_band = Some(sel);
         state
             .history
-            .record_if_changed(EqPresetSnapshot::capture_from(params), false);
+            .record_if_changed(EqPresetSnapshot::capture_with(params, setter.live), false);
     }
 }

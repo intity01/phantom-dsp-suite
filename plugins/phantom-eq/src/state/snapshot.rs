@@ -1,36 +1,20 @@
 //! Full 24-Band & Global Parameter Snapshot Engine for Phantom EQ
-//! Supports host-automation-safe parameter application via `ParamSetter` and float-noise-tolerant comparison.
+//! Captures from the host params or the live GUI mirror (`ParamRead`), applies through the
+//! automation-safe `LiveSetter`, and compares with float-noise-tolerant (relative) equality.
 
+use crate::live_mirror::{LiveSetter, ParamRead};
 use crate::params::{
     BandParams, ChannelPlacementParam, CharacterModeParam, FilterSlopeParam, FilterTypeParam,
     OversamplingParam, PhantomEqParams, ProcessingModeParam, NUM_BANDS,
 };
-use nih_plug::prelude::*;
 
 pub type OversampleParam = OversamplingParam;
 pub type CharacterParam = CharacterModeParam;
 
 #[inline]
 fn f_eq(a: f32, b: f32) -> bool {
-    (a - b).abs() < 1e-4
-}
-
-fn set_bool(setter: &ParamSetter<'_>, param: &BoolParam, val: bool) {
-    setter.begin_set_parameter(param);
-    setter.set_parameter(param, val);
-    setter.end_set_parameter(param);
-}
-
-fn set_float(setter: &ParamSetter<'_>, param: &FloatParam, val: f32) {
-    setter.begin_set_parameter(param);
-    setter.set_parameter(param, val);
-    setter.end_set_parameter(param);
-}
-
-fn set_enum<T: Enum + PartialEq>(setter: &ParamSetter<'_>, param: &EnumParam<T>, val: T) {
-    setter.begin_set_parameter(param);
-    setter.set_parameter(param, val);
-    setter.end_set_parameter(param);
+    // Relative tolerance: normalized<->plain round trips of e.g. 10 kHz drift by ~1e-3 Hz.
+    (a - b).abs() <= 1e-4 * a.abs().max(b.abs()).max(1.0)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -119,42 +103,42 @@ impl BandSnapshotData {
         self
     }
 
-    pub fn capture_from(band: &BandParams) -> Self {
+    pub fn capture_with(band: &BandParams, r: &impl ParamRead) -> Self {
         Self {
-            used: band.used.value(),
-            enabled: band.enabled.value(),
-            filter_type: band.filter_type.value(),
-            slope: band.slope.value(),
-            placement: band.placement.value(),
-            frequency: band.frequency.value(),
-            gain: band.gain.value(),
-            q: band.q.value(),
-            dynamic_range: band.dynamic_range.value(),
-            dynamic_threshold: band.dynamic_threshold.value(),
-            dynamic_attack: band.dynamic_attack.value(),
-            dynamic_release: band.dynamic_release.value(),
-            dynamic_auto_thresh: band.dynamic_auto_thresh.value(),
-            dynamic_ext_sc: band.dynamic_ext_sc.value(),
-            spectral_enabled: band.spectral_dynamics.value(),
+            used: r.read(&band.used),
+            enabled: r.read(&band.enabled),
+            filter_type: r.read(&band.filter_type),
+            slope: r.read(&band.slope),
+            placement: r.read(&band.placement),
+            frequency: r.read(&band.frequency),
+            gain: r.read(&band.gain),
+            q: r.read(&band.q),
+            dynamic_range: r.read(&band.dynamic_range),
+            dynamic_threshold: r.read(&band.dynamic_threshold),
+            dynamic_attack: r.read(&band.dynamic_attack),
+            dynamic_release: r.read(&band.dynamic_release),
+            dynamic_auto_thresh: r.read(&band.dynamic_auto_thresh),
+            dynamic_ext_sc: r.read(&band.dynamic_ext_sc),
+            spectral_enabled: r.read(&band.spectral_dynamics),
         }
     }
 
-    pub fn apply_to(&self, band: &BandParams, setter: &ParamSetter<'_>) {
-        set_bool(setter, &band.used, self.used);
-        set_bool(setter, &band.enabled, self.enabled);
-        set_enum(setter, &band.filter_type, self.filter_type);
-        set_enum(setter, &band.slope, self.slope);
-        set_enum(setter, &band.placement, self.placement);
-        set_float(setter, &band.frequency, self.frequency);
-        set_float(setter, &band.gain, self.gain);
-        set_float(setter, &band.q, self.q);
-        set_float(setter, &band.dynamic_range, self.dynamic_range);
-        set_float(setter, &band.dynamic_threshold, self.dynamic_threshold);
-        set_float(setter, &band.dynamic_attack, self.dynamic_attack);
-        set_float(setter, &band.dynamic_release, self.dynamic_release);
-        set_bool(setter, &band.dynamic_auto_thresh, self.dynamic_auto_thresh);
-        set_bool(setter, &band.dynamic_ext_sc, self.dynamic_ext_sc);
-        set_bool(setter, &band.spectral_dynamics, self.spectral_enabled);
+    pub fn apply_to(&self, band: &BandParams, setter: &LiveSetter<'_>) {
+        setter.set_once(&band.used, self.used);
+        setter.set_once(&band.enabled, self.enabled);
+        setter.set_once(&band.filter_type, self.filter_type);
+        setter.set_once(&band.slope, self.slope);
+        setter.set_once(&band.placement, self.placement);
+        setter.set_once(&band.frequency, self.frequency);
+        setter.set_once(&band.gain, self.gain);
+        setter.set_once(&band.q, self.q);
+        setter.set_once(&band.dynamic_range, self.dynamic_range);
+        setter.set_once(&band.dynamic_threshold, self.dynamic_threshold);
+        setter.set_once(&band.dynamic_attack, self.dynamic_attack);
+        setter.set_once(&band.dynamic_release, self.dynamic_release);
+        setter.set_once(&band.dynamic_auto_thresh, self.dynamic_auto_thresh);
+        setter.set_once(&band.dynamic_ext_sc, self.dynamic_ext_sc);
+        setter.set_once(&band.spectral_dynamics, self.spectral_enabled);
     }
 
     pub fn approx_eq(&self, other: &Self) -> bool {
@@ -226,27 +210,33 @@ impl EqPresetSnapshot {
         snap
     }
 
+    /// Captures the values currently stored in the host parameter objects.
     pub fn capture_from(params: &PhantomEqParams) -> Self {
+        Self::capture_with(params, &crate::live_mirror::HostRead)
+    }
+
+    /// Captures through any reader (e.g. the authoritative live GUI mirror).
+    pub fn capture_with(params: &PhantomEqParams, r: &impl ParamRead) -> Self {
         Self {
             name: String::from("Current"),
             category: "User",
-            mode: params.mode.value(),
-            oversampling: params.oversampling.value(),
-            character: params.character.value(),
-            auto_gain: params.auto_gain.value(),
-            output_gain_db: params.output_gain.value(),
-            phase_invert: params.phase_invert.value(),
-            bands: std::array::from_fn(|i| BandSnapshotData::capture_from(&params.bands[i])),
+            mode: r.read(&params.mode),
+            oversampling: r.read(&params.oversampling),
+            character: r.read(&params.character),
+            auto_gain: r.read(&params.auto_gain),
+            output_gain_db: r.read(&params.output_gain),
+            phase_invert: r.read(&params.phase_invert),
+            bands: std::array::from_fn(|i| BandSnapshotData::capture_with(&params.bands[i], r)),
         }
     }
 
-    pub fn apply_to(&self, params: &PhantomEqParams, setter: &ParamSetter<'_>) {
-        set_enum(setter, &params.mode, self.mode);
-        set_enum(setter, &params.oversampling, self.oversampling);
-        set_enum(setter, &params.character, self.character);
-        set_bool(setter, &params.auto_gain, self.auto_gain);
-        set_float(setter, &params.output_gain, self.output_gain_db);
-        set_bool(setter, &params.phase_invert, self.phase_invert);
+    pub fn apply_to(&self, params: &PhantomEqParams, setter: &LiveSetter<'_>) {
+        setter.set_once(&params.mode, self.mode);
+        setter.set_once(&params.oversampling, self.oversampling);
+        setter.set_once(&params.character, self.character);
+        setter.set_once(&params.auto_gain, self.auto_gain);
+        setter.set_once(&params.output_gain, self.output_gain_db);
+        setter.set_once(&params.phase_invert, self.phase_invert);
         for (i, band_snap) in self.bands.iter().enumerate() {
             band_snap.apply_to(&params.bands[i], setter);
         }

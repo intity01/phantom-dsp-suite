@@ -2,8 +2,8 @@
 //! Guarantees dragging an EQ node across 100 frames records one clean undo step on mouse release.
 
 use super::snapshot::EqPresetSnapshot;
+use crate::live_mirror::{LiveSetter, ParamRead};
 use crate::params::PhantomEqParams;
-use nih_plug::prelude::ParamSetter;
 
 pub const MAX_UNDO_STEPS: usize = 64;
 
@@ -49,8 +49,8 @@ impl AbHistoryManager {
     }
 
     /// Saves current parameter state into the active slot, switches to the other slot, and applies it.
-    pub fn toggle_ab(&mut self, params: &PhantomEqParams, setter: &ParamSetter<'_>) {
-        let current = EqPresetSnapshot::capture_from(params);
+    pub fn toggle_ab(&mut self, params: &PhantomEqParams, setter: &LiveSetter<'_>) {
+        let current = EqPresetSnapshot::capture_with(params, setter.live);
         if self.is_slot_b {
             self.slot_b = current;
         } else {
@@ -67,28 +67,38 @@ impl AbHistoryManager {
     }
 
     /// Copies slot A state into slot B (refreshing slot A from live parameters if A is active).
-    pub fn copy_a_to_b(&mut self, params: &PhantomEqParams) {
+    pub fn copy_a_to_b(&mut self, params: &PhantomEqParams, live: &impl ParamRead) {
         if !self.is_slot_b {
-            self.slot_a = EqPresetSnapshot::capture_from(params);
+            self.slot_a = EqPresetSnapshot::capture_with(params, live);
         }
         self.slot_b = self.slot_a.clone();
     }
 
     /// Copies slot B state into slot A (refreshing slot B from live parameters if B is active).
-    pub fn copy_b_to_a(&mut self, params: &PhantomEqParams) {
+    pub fn copy_b_to_a(&mut self, params: &PhantomEqParams, live: &impl ParamRead) {
         if self.is_slot_b {
-            self.slot_b = EqPresetSnapshot::capture_from(params);
+            self.slot_b = EqPresetSnapshot::capture_with(params, live);
         }
         self.slot_a = self.slot_b.clone();
     }
 
     /// Copies whichever slot is currently active into the opposite slot (`A -> B` or `B -> A`).
-    pub fn copy_active_to_other(&mut self, params: &PhantomEqParams) {
+    pub fn copy_active_to_other(&mut self, params: &PhantomEqParams, live: &impl ParamRead) {
         if self.is_slot_b {
-            self.copy_b_to_a(params);
+            self.copy_b_to_a(params, live);
         } else {
-            self.copy_a_to_b(params);
+            self.copy_a_to_b(params, live);
         }
+    }
+
+    /// Re-bases history on `current` without creating an undo step (editor open / state restore).
+    pub fn reset_baseline(&mut self, current: EqPresetSnapshot) {
+        if self.is_slot_b {
+            self.slot_b = current.clone();
+        } else {
+            self.slot_a = current.clone();
+        }
+        self.active_snapshot = current;
     }
 
     /// Commits a new undo entry only when `!is_dragging` and parameters changed beyond `< 1e-4` float noise.
@@ -111,7 +121,7 @@ impl AbHistoryManager {
         &mut self,
         preset: &EqPresetSnapshot,
         params: &PhantomEqParams,
-        setter: &ParamSetter<'_>,
+        setter: &LiveSetter<'_>,
     ) {
         if !preset.approx_eq(&self.active_snapshot) {
             Self::push_bounded(&mut self.undo_stack, self.active_snapshot.clone());
@@ -127,7 +137,7 @@ impl AbHistoryManager {
     }
 
     /// Steps backward one state in history and applies it to `params`.
-    pub fn undo(&mut self, params: &PhantomEqParams, setter: &ParamSetter<'_>) -> bool {
+    pub fn undo(&mut self, params: &PhantomEqParams, setter: &LiveSetter<'_>) -> bool {
         let Some(prev) = self.undo_stack.pop() else {
             return false;
         };
@@ -143,7 +153,7 @@ impl AbHistoryManager {
     }
 
     /// Steps forward one state in history and applies it to `params`.
-    pub fn redo(&mut self, params: &PhantomEqParams, setter: &ParamSetter<'_>) -> bool {
+    pub fn redo(&mut self, params: &PhantomEqParams, setter: &LiveSetter<'_>) -> bool {
         let Some(next) = self.redo_stack.pop() else {
             return false;
         };

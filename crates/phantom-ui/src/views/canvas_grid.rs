@@ -156,7 +156,7 @@ pub fn draw_empty_canvas_hint(painter: &Painter, map: &EqCanvasMapping) {
     painter.text(
         Pos2::new(map.rect.center().x, map.rect.max.y - 24.0),
         Align2::CENTER_BOTTOM,
-        "Double-click or drag on the curve to add an EQ band",
+        "Click curve, drag anywhere, double-click, or press [+ BAND] to add an EQ band",
         FontId::proportional(11.5),
         Color32::from_rgba_unmultiplied(148, 163, 184, 118),
     );

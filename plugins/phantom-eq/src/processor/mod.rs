@@ -8,6 +8,7 @@ mod linear;
 mod solo;
 
 use crate::dsp_state::SharedBandGr;
+use crate::live_mirror::ParamRead;
 use crate::params::{PhantomEqParams, ProcessingModeParam, NUM_BANDS};
 use iir::{prepare_iir_bands, process_iir_sample_os, publish_band_gr};
 use linear::{LinearPhaseTracker, LP_CHUNK_SIZE};
@@ -109,9 +110,9 @@ impl EqProcessor {
         }
     }
 
-    pub fn sync_linear_phase(&mut self, params: &PhantomEqParams) {
+    pub fn sync_linear_phase(&mut self, params: &PhantomEqParams, live: &impl ParamRead) {
         self.lp_tracker
-            .sync(&mut self.linear_phase, params, self.sample_rate);
+            .sync(&mut self.linear_phase, params, live, self.sample_rate);
     }
 
     /// Processes a stereo audio block through EQ, Character, Auto-Gain, Solo ramp, and Metering.
@@ -119,6 +120,7 @@ impl EqProcessor {
     pub fn process_block(
         &mut self,
         params: &PhantomEqParams,
+        live: &impl ParamRead,
         mode: ProcessingModeParam,
         requested_solo: u8,
         left: &mut [f32],
@@ -134,15 +136,17 @@ impl EqProcessor {
             return;
         }
 
-        let char_mode: CharacterMode = params.character.value().into();
-        let auto_gain_en = params.auto_gain.value();
+        let char_mode: CharacterMode = live.read(&params.character).into();
+        let auto_gain_en = live.read(&params.auto_gain);
         let (solo_target, solo_placement) =
-            self.solo.prepare(params, requested_solo, self.sample_rate);
+            self.solo
+                .prepare(params, live, requested_solo, self.sample_rate);
 
         if mode == ProcessingModeParam::LinearPhase {
             shared_gr.clear_all();
             self.process_linear_phase_chunks(
                 params,
+                live,
                 &mut left[..total],
                 &mut right[..total],
                 char_mode,
@@ -153,10 +157,11 @@ impl EqProcessor {
             );
         } else {
             let natural_phase = mode == ProcessingModeParam::NaturalPhase;
-            let os_factor: OversampleFactor = params.oversampling.value().into();
+            let os_factor: OversampleFactor = live.read(&params.oversampling).into();
             let effective_sr = self.sample_rate * os_factor.multiplier() as f32;
             let (mut active, count) = prepare_iir_bands(
                 params,
+                live,
                 &mut self.filters,
                 &mut self.dynamic_detectors,
                 &mut self.spectral_processors,
@@ -221,6 +226,7 @@ impl EqProcessor {
     fn process_linear_phase_chunks(
         &mut self,
         params: &PhantomEqParams,
+        live: &impl ParamRead,
         left: &mut [f32],
         right: &mut [f32],
         char_mode: CharacterMode,
@@ -229,7 +235,7 @@ impl EqProcessor {
         solo_target: f32,
         solo_placement: ChannelTarget,
     ) {
-        self.sync_linear_phase(params);
+        self.sync_linear_phase(params, live);
         let mut pre_l_buf = [0.0_f32; LP_CHUNK_SIZE];
         let mut pre_r_buf = [0.0_f32; LP_CHUNK_SIZE];
         let total = left.len();

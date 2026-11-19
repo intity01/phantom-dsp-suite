@@ -2,6 +2,7 @@
 //! Provides fixed-size 24-band snapshots, lock-free live GR telemetry,
 //! Solo Audition auditioning filters, and M/S-aware stereo filter routing.
 
+use crate::live_mirror::{HostRead, ParamRead};
 use crate::params::{BandParams, NUM_BANDS};
 use phantom_dsp::{
     decode_mid_side, encode_mid_side, BiquadCoeffs, CascadedCoeffs, CascadedStereoFilter,
@@ -97,15 +98,20 @@ impl Eq for BandSnapshot {}
 impl BandSnapshot {
     #[inline]
     pub fn from_band(band: &BandParams) -> Self {
+        Self::from_band_with(band, &HostRead)
+    }
+
+    #[inline]
+    pub fn from_band_with(band: &BandParams, r: &impl ParamRead) -> Self {
         Self {
-            used: band.used.value(),
-            enabled: band.enabled.value(),
-            filter_type: band.filter_type.value().into(),
-            slope: band.slope.value().into(),
-            placement: band.placement.value().into(),
-            freq: band.frequency.value(),
-            gain: band.gain.value(),
-            q: band.q.value(),
+            used: r.read(&band.used),
+            enabled: r.read(&band.enabled),
+            filter_type: r.read(&band.filter_type).into(),
+            slope: r.read(&band.slope).into(),
+            placement: r.read(&band.placement).into(),
+            freq: r.read(&band.frequency),
+            gain: r.read(&band.gain),
+            q: r.read(&band.q),
         }
     }
 
@@ -164,7 +170,15 @@ impl BandSnapshot {
 /// Captures all 24 bands into a fixed-size stack array (zero heap allocations).
 #[inline]
 pub fn capture_band_snapshots(bands: &[BandParams; NUM_BANDS]) -> [BandSnapshot; NUM_BANDS] {
-    std::array::from_fn(|i| BandSnapshot::from_band(&bands[i]))
+    capture_band_snapshots_with(bands, &HostRead)
+}
+
+#[inline]
+pub fn capture_band_snapshots_with(
+    bands: &[BandParams; NUM_BANDS],
+    r: &impl ParamRead,
+) -> [BandSnapshot; NUM_BANDS] {
+    std::array::from_fn(|i| BandSnapshot::from_band_with(&bands[i], r))
 }
 
 /// Processes one stereo sample pair through a cascaded filter respecting Stereo/L/R/M/S placement.

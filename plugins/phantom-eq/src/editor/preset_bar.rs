@@ -1,17 +1,17 @@
 //! Preset Browser, A/B State Bank & 64-Step Undo/Redo Header Controls
 //! Integrates 12 Factory Presets + Offline `.peq` User Presets, `<` / `>` quick navigation,
-//! `[Save]`, `[Undo]` / `[Redo]`, `[A / B]` slot toggle, and `[Copy]` into the top header bar.
+//! `[Save]`, `[Undo]` / `[Redo]`, `[A / B]` slot toggle, and `[Copy]` into Header Row 1.
 
 use super::EditorState;
+use crate::live_mirror::{LiveParamMirror, LiveSetter};
 use crate::params::{PhantomEqParams, NUM_BANDS};
 use crate::state::{load_user_presets, save_user_preset, EqPresetSnapshot};
-use nih_plug::prelude::ParamSetter;
 use nih_plug_egui::egui::{self, FontId, RichText, Ui};
 use phantom_ui::{ACCENT_AMBER, ACCENT_CYAN, ACCENT_GREEN, TEXT_BRIGHT, TEXT_DIMMED, TEXT_MUTED};
 
 pub fn draw_preset_bar(
     ui: &mut Ui,
-    setter: &ParamSetter,
+    setter: &LiveSetter,
     params: &PhantomEqParams,
     state: &mut EditorState,
 ) {
@@ -36,7 +36,6 @@ pub fn draw_preset_bar(
         base_name.to_string()
     };
 
-    // Prev `<` preset button
     if ui
         .selectable_label(
             false,
@@ -52,10 +51,9 @@ pub fn draw_preset_bar(
         apply_preset_by_index(setter, params, state, prev_idx);
     }
 
-    // Preset ComboBox selector (12 Factory Presets + User Presets)
     let mut chosen_idx: Option<usize> = None;
     egui::ComboBox::from_id_salt("phantom_eq_preset_selector")
-        .width(172.0)
+        .width(155.0)
         .selected_text(
             RichText::new(display_title)
                 .font(FontId::proportional(10.0))
@@ -83,7 +81,6 @@ pub fn draw_preset_bar(
         apply_preset_by_index(setter, params, state, idx);
     }
 
-    // Next `>` preset button
     if ui
         .selectable_label(
             false,
@@ -99,7 +96,6 @@ pub fn draw_preset_bar(
         apply_preset_by_index(setter, params, state, next_idx);
     }
 
-    // `[Save]` offline `.peq` User Preset button
     if ui
         .selectable_label(
             false,
@@ -111,7 +107,7 @@ pub fn draw_preset_bar(
         .on_hover_text("Save current EQ state as an offline .peq user preset")
         .clicked()
     {
-        let mut snap = EqPresetSnapshot::capture_from(params);
+        let mut snap = EqPresetSnapshot::capture_with(params, setter.live);
         let next_num = state.user_presets.len() + 1;
         snap.name = format!("User Preset {next_num:02}");
         if save_user_preset(&snap).is_ok() {
@@ -124,7 +120,6 @@ pub fn draw_preset_bar(
 
     ui.separator();
 
-    // `[Undo]` & `[Redo]` buttons
     let can_undo = state.history.can_undo();
     if ui
         .selectable_label(
@@ -141,7 +136,7 @@ pub fn draw_preset_bar(
         && can_undo
     {
         state.history.undo(params, setter);
-        sync_selected_band_after_load(params, state);
+        sync_selected_band_after_load(params, setter.live, state);
     }
 
     let can_redo = state.history.can_redo();
@@ -160,12 +155,11 @@ pub fn draw_preset_bar(
         && can_redo
     {
         state.history.redo(params, setter);
-        sync_selected_band_after_load(params, state);
+        sync_selected_band_after_load(params, setter.live, state);
     }
 
-    // `[A / B]` Compare toggle button + `[Copy]` button
     let is_b = state.history.is_slot_b();
-    let ab_label = if is_b { "A / [B]" } else { "[A] / B" };
+    let ab_label = if is_b { "A/[B]" } else { "[A]/B" };
     let ab_col = if is_b { ACCENT_AMBER } else { ACCENT_CYAN };
     if ui
         .selectable_label(
@@ -179,26 +173,30 @@ pub fn draw_preset_bar(
         .clicked()
     {
         state.history.toggle_ab(params, setter);
-        sync_selected_band_after_load(params, state);
+        sync_selected_band_after_load(params, setter.live, state);
     }
 
-    let copy_txt = if is_b { "Copy B>A" } else { "Copy A>B" };
+    let copy_tip = if is_b {
+        "Copy active slot B into slot A"
+    } else {
+        "Copy active slot A into slot B"
+    };
     if ui
         .selectable_label(
             false,
-            RichText::new(copy_txt)
+            RichText::new("Copy")
                 .font(FontId::proportional(9.5))
                 .color(TEXT_MUTED),
         )
-        .on_hover_text("Copy active slot state into the opposite A/B comparison slot")
+        .on_hover_text(copy_tip)
         .clicked()
     {
-        state.history.copy_active_to_other(params);
+        state.history.copy_active_to_other(params, setter.live);
     }
 }
 
 pub fn apply_preset_by_index(
-    setter: &ParamSetter,
+    setter: &LiveSetter,
     params: &PhantomEqParams,
     state: &mut EditorState,
     idx: usize,
@@ -212,10 +210,14 @@ pub fn apply_preset_by_index(
     if let Some(preset) = maybe_preset {
         state.current_preset_idx = idx;
         state.history.apply_preset(&preset, params, setter);
-        sync_selected_band_after_load(params, state);
+        sync_selected_band_after_load(params, setter.live, state);
     }
 }
 
-pub fn sync_selected_band_after_load(params: &PhantomEqParams, state: &mut EditorState) {
-    state.selected_band = (0..NUM_BANDS).find(|&i| params.bands[i].used.value());
+pub fn sync_selected_band_after_load(
+    params: &PhantomEqParams,
+    live: &LiveParamMirror,
+    state: &mut EditorState,
+) {
+    state.selected_band = (0..NUM_BANDS).find(|&i| live.read(&params.bands[i].used));
 }

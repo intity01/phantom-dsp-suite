@@ -5,12 +5,14 @@
 
 pub mod dsp_state;
 pub mod editor;
+pub mod live_mirror;
 pub mod params;
 pub mod processor;
 pub mod state;
 
 use dsp_state::SharedBandGr;
 use editor::{draw_editor, EditorShared, EditorState, NO_SOLO};
+use live_mirror::LiveParamMirror;
 use nih_plug::prelude::*;
 use nih_plug_egui::create_egui_editor;
 use params::{PhantomEqParams, ProcessingModeParam};
@@ -33,6 +35,7 @@ pub struct PhantomEq {
     solo_band: Arc<AtomicU8>,
     shared_sample_rate: Arc<AtomicU32>,
     shared_latency: Arc<AtomicU32>,
+    live_params: Arc<LiveParamMirror>,
     collision_slot: usize,
     last_reported_latency: u32,
     last_mode: ProcessingModeParam,
@@ -41,8 +44,10 @@ pub struct PhantomEq {
 
 impl Default for PhantomEq {
     fn default() -> Self {
+        let params = Arc::new(PhantomEqParams::default());
         Self {
-            params: Arc::new(PhantomEqParams::default()),
+            live_params: Arc::new(LiveParamMirror::new(params.clone())),
+            params,
             processor: EqProcessor::new(),
             shared_spectrum: Arc::new(SharedSpectrum::new()),
             shared_meters: Arc::new(SharedMeters::new()),
@@ -103,6 +108,7 @@ impl Plugin for PhantomEq {
             solo_band: self.solo_band.clone(),
             sample_rate_bits: self.shared_sample_rate.clone(),
             latency_samples: self.shared_latency.clone(),
+            live: self.live_params.clone(),
             collision_slot: self.collision_slot,
         };
 
@@ -128,11 +134,14 @@ impl Plugin for PhantomEq {
         self.processor.initialize(sr);
         self.shared_meters.reset();
         self.shared_band_gr.clear_all();
+        // Adopt any host-side state restore (project load) into the authoritative GUI mirror.
+        self.live_params.reconcile();
 
-        let mode = self.params.mode.value();
+        let mode = self.live_params.read(&self.params.mode);
         self.last_mode = mode;
         if mode == ProcessingModeParam::LinearPhase {
-            self.processor.sync_linear_phase(&self.params);
+            self.processor
+                .sync_linear_phase(&self.params, self.live_params.as_ref());
         }
         let latency = self.processor.latency_for_mode(mode);
         context.set_latency_samples(latency);
@@ -153,7 +162,10 @@ impl Plugin for PhantomEq {
         aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let mode = self.params.mode.value();
+        self.live_params.reconcile();
+        let live = self.live_params.as_ref();
+
+        let mode = live.read(&self.params.mode);
         let desired_latency = self.processor.latency_for_mode(mode);
         if desired_latency != self.last_reported_latency {
             context.set_latency_samples(desired_latency);
@@ -169,24 +181,25 @@ impl Plugin for PhantomEq {
         let editor_open = self.params.editor_state.is_open();
         let slices = buffer.as_slice();
         if slices.len() < 2 {
-            return ProcessStatus::Normal;
+            return ProcessStatus::KeepAlive;
         }
         let (left_slice, right_slice) = slices.split_at_mut(1);
         let left_channel = &mut left_slice[0];
         let right_channel = &mut right_slice[0];
 
-        if self.params.bypass.value() {
+        if live.read(&self.params.bypass) {
             self.was_bypassed = true;
             self.shared_band_gr.clear_all();
             self.processor
                 .meter_bypass_block(left_channel, right_channel, &self.shared_meters);
+            // Analyzer + meters keep moving while bypassed (raw input = output).
             if editor_open {
                 self.shared_spectrum
                     .push_stereo_pre(left_channel, right_channel);
                 self.shared_spectrum
                     .push_stereo_post_and_side(left_channel, right_channel);
             }
-            return ProcessStatus::Normal;
+            return ProcessStatus::KeepAlive;
         }
         if self.was_bypassed {
             self.was_bypassed = false;
@@ -209,8 +222,8 @@ impl Plugin for PhantomEq {
             })
             .unwrap_or((&[], &[]));
 
-        let out_gain_linear = util::db_to_gain(self.params.output_gain.value());
-        let phase_mult = if self.params.phase_invert.value() {
+        let out_gain_linear = util::db_to_gain(live.read(&self.params.output_gain));
+        let phase_mult = if live.read(&self.params.phase_invert) {
             -1.0
         } else {
             1.0
@@ -220,6 +233,7 @@ impl Plugin for PhantomEq {
 
         self.processor.process_block(
             &self.params,
+            live,
             mode,
             requested_solo,
             left_channel,
@@ -236,7 +250,10 @@ impl Plugin for PhantomEq {
                 .push_stereo_post_and_side(left_channel, right_channel);
         }
 
-        ProcessStatus::Normal
+        // `KeepAlive` reports an infinite tail (`kInfiniteTail`) so Cubase's silent-track
+        // suspension never stops calling `process()`: GUI edits, bypass, meters and the analyzer
+        // stay live while the transport is stopped. (`Normal` reports `kNoTail`.)
+        ProcessStatus::KeepAlive
     }
 }
 

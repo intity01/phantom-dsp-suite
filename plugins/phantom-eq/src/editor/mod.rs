@@ -1,83 +1,42 @@
 //! Phantom EQ Plugin GUI Window & State Management
-//! Modular Pro-Q 4+ style editor with ResizableWindow, Floating Band HUD Popover,
-//! Piano Roll, Spectrum Grab, EQ Match, Collision Detection, Presets, A/B, and Undo/Redo.
+//! Modular Pro-Q 4+ style editor with Fixed Constant Window Size Presets (`S / M / L / XL`),
+//! Lock-Free Live Parameter Mirror (0 ms GUI edits even when Cubase suspends `process()`),
+//! Floating Band HUD Popover, Piano Roll, Spectrum Grab, EQ Match, Collision Detection & Undo/Redo.
 
+mod canvas_hit;
 mod display;
 mod display_helpers;
 mod gestures;
 mod header;
+mod header_row2;
 mod inspector;
 mod match_panel;
 mod preset_bar;
+mod shared;
+mod window_size;
 
-use crate::dsp_state::SharedBandGr;
+pub use shared::{EditorShared, NO_SOLO};
+
+use crate::live_mirror::{LiveParamMirror, LiveSetter};
 use crate::params::{PhantomEqParams, NUM_BANDS};
 use crate::state::{factory_presets, load_user_presets, AbHistoryManager, EqPresetSnapshot};
 use display_helpers::{apply_master_events, delete_band};
 use nih_plug::prelude::ParamSetter;
 use nih_plug_egui::egui::{self, Key, Pos2, Rect, Vec2};
-use nih_plug_egui::resizable_window::ResizableWindow;
-use phantom_dsp::{
-    CollisionRegistry, EqMatchEngine, SharedMeters, SharedSpectrum, SpectrumProcessor,
-    NUM_DISPLAY_BINS,
-};
+use phantom_dsp::{CollisionRegistry, EqMatchEngine, SpectrumProcessor, NUM_DISPLAY_BINS};
 use phantom_ui::{
     configure_visuals, draw_master_bar, draw_output_meter, MasterBarData, OutputMeterData,
     BG_PANEL, OUTPUT_METER_WIDTH,
 };
 use preset_bar::sync_selected_band_after_load;
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
-use std::sync::Arc;
-
-pub const NO_SOLO: u8 = u8::MAX;
-
-pub struct EditorShared {
-    pub spectrum: Arc<SharedSpectrum>,
-    pub meters: Arc<SharedMeters>,
-    pub band_gr: Arc<SharedBandGr>,
-    pub solo_band: Arc<AtomicU8>,
-    pub sample_rate_bits: Arc<AtomicU32>,
-    pub latency_samples: Arc<AtomicU32>,
-    pub collision_slot: usize,
-}
-
-impl EditorShared {
-    pub fn sample_rate(&self) -> f32 {
-        let sr = f32::from_bits(self.sample_rate_bits.load(Ordering::Relaxed));
-        if sr.is_finite() && sr >= 8000.0 {
-            sr
-        } else {
-            44100.0
-        }
-    }
-
-    pub fn solo_band(&self) -> Option<usize> {
-        let v = self.solo_band.load(Ordering::Relaxed) as usize;
-        (v < NUM_BANDS).then_some(v)
-    }
-
-    pub fn set_solo(&self, band: Option<usize>) {
-        let raw = band
-            .filter(|&i| i < NUM_BANDS)
-            .map(|i| i as u8)
-            .unwrap_or(NO_SOLO);
-        self.solo_band.store(raw, Ordering::Relaxed);
-    }
-
-    pub fn clear_solo(&self) {
-        self.solo_band.store(NO_SOLO, Ordering::Relaxed);
-    }
-
-    pub fn latency_samples(&self) -> u32 {
-        self.latency_samples.load(Ordering::Relaxed)
-    }
-}
+use window_size::{current_preset, show_zoomed_root};
 
 pub struct EditorState {
     pub selected_band: Option<usize>,
     pub dragging_band: Option<usize>,
     pub drag_created_band: Option<usize>,
     pub pending_curve_press: Option<Pos2>,
+    pub last_band_created_time: f64,
     pub latched_solo: Option<usize>,
     pub solo_hold_band: Option<usize>,
     pub solo_press_start: Option<f64>,
@@ -104,6 +63,7 @@ pub struct EditorState {
     pub match_max_bands: usize,
     pub match_amount_pct: f32,
     pub history: AbHistoryManager,
+    pub history_initialized: bool,
     pub factory_presets: Vec<EqPresetSnapshot>,
     pub user_presets: Vec<EqPresetSnapshot>,
     pub current_preset_idx: usize,
@@ -116,6 +76,7 @@ impl Default for EditorState {
             dragging_band: None,
             drag_created_band: None,
             pending_curve_press: None,
+            last_band_created_time: -10.0,
             latched_solo: None,
             solo_hold_band: None,
             solo_press_start: None,
@@ -142,6 +103,7 @@ impl Default for EditorState {
             match_max_bands: 6,
             match_amount_pct: 100.0,
             history: AbHistoryManager::new(),
+            history_initialized: false,
             factory_presets: factory_presets(),
             user_presets: load_user_presets(),
             current_preset_idx: 0,
@@ -150,11 +112,15 @@ impl Default for EditorState {
 }
 
 impl EditorState {
-    pub fn effective_solo(&self, params: &PhantomEqParams) -> Option<usize> {
+    pub fn effective_solo(
+        &self,
+        params: &PhantomEqParams,
+        live: &LiveParamMirror,
+    ) -> Option<usize> {
         self.alt_solo_band
             .or(self.solo_hold_band)
             .or(self.latched_solo)
-            .filter(|&i| i < NUM_BANDS && params.bands[i].used.value())
+            .filter(|&i| i < NUM_BANDS && live.read(&params.bands[i].used))
     }
 }
 
@@ -165,26 +131,33 @@ pub fn draw_editor(
     params: &PhantomEqParams,
     shared: &EditorShared,
 ) {
+    shared.live.reconcile();
+    let live = shared.live.as_ref();
+    let live_setter = LiveSetter::new(setter, live);
+
     let sample_rate = shared.sample_rate();
     state.sample_rate = sample_rate;
 
+    let current_snap = EqPresetSnapshot::capture_with(params, live);
+    if !state.history_initialized {
+        state.history.reset_baseline(current_snap.clone());
+        state.history_initialized = true;
+    }
     let is_busy = state.dragging_band.is_some() || state.solo_press_start.is_some();
-    state
-        .history
-        .record_if_changed(EqPresetSnapshot::capture_from(params), is_busy);
+    state.history.record_if_changed(current_snap, is_busy);
 
     if state
         .selected_band
-        .is_some_and(|s| s >= NUM_BANDS || !params.bands[s].used.value())
+        .is_some_and(|s| s >= NUM_BANDS || !live.read(&params.bands[s].used))
         || (state.selected_band.is_none() && state.dragging_band.is_none())
     {
-        state.selected_band = (0..NUM_BANDS).find(|&i| params.bands[i].used.value());
+        state.selected_band = (0..NUM_BANDS).find(|&i| live.read(&params.bands[i].used));
     }
 
     if !ctx.wants_keyboard_input() {
         if ctx.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace)) {
             if let Some(sel) = state.selected_band {
-                delete_band(setter, params, state, shared, sel);
+                delete_band(&live_setter, params, state, shared, sel);
             }
         }
         let (undo_key, redo_key) = ctx.input(|i| {
@@ -193,10 +166,10 @@ pub fn draw_editor(
             let r = cmd && (i.key_pressed(Key::Y) || (i.modifiers.shift && i.key_pressed(Key::Z)));
             (u, r)
         });
-        if (undo_key && state.history.undo(params, setter))
-            || (redo_key && state.history.redo(params, setter))
+        if (undo_key && state.history.undo(params, &live_setter))
+            || (redo_key && state.history.redo(params, &live_setter))
         {
-            sync_selected_band_after_load(params, state);
+            sync_selected_band_after_load(params, live, state);
         }
     }
 
@@ -227,63 +200,62 @@ pub fn draw_editor(
     let makeup_db = shared.meters.load_makeup_db();
     configure_visuals(ctx);
 
-    ResizableWindow::new("phantom-eq-res-win")
-        .min_size(Vec2::new(860.0, 500.0))
-        .show(ctx, params.editor_state.as_ref(), |ui| {
-            egui::Frame::NONE.fill(BG_PANEL).show(ui, |ui| {
-                header::draw_header(ui, setter, params, state, shared);
+    let zoom = current_preset(&params.editor_state).zoom;
+    show_zoomed_root(ctx, zoom, |ui| {
+        egui::Frame::NONE.fill(BG_PANEL).show(ui, |ui| {
+            header::draw_header(ui, &live_setter, params, state, shared);
+            ui.add_space(4.0);
+
+            let dock_reserve = match (state.show_docked_inspector, state.selected_band) {
+                (false, _) => 44.0,
+                (true, Some(_)) => 148.0,
+                (true, None) => 84.0,
+            };
+            let display_h = (ui.available_height() - dock_reserve).max(220.0);
+            let display_w = (ui.available_width() - OUTPUT_METER_WIDTH - 10.0).max(320.0);
+
+            ui.horizontal(|ui| {
                 ui.add_space(4.0);
-
-                let dock_reserve = match (state.show_docked_inspector, state.selected_band) {
-                    (false, _) => 44.0,
-                    (true, Some(_)) => 148.0,
-                    (true, None) => 84.0,
-                };
-                let display_h = (ui.available_height() - dock_reserve).max(240.0);
-                let display_w = (ui.available_width() - OUTPUT_METER_WIDTH - 10.0).max(320.0);
-
-                ui.horizontal(|ui| {
-                    ui.add_space(4.0);
-                    display::draw_main_display(
-                        ui,
-                        setter,
-                        state,
-                        params,
-                        shared,
-                        Vec2::new(display_w, display_h),
-                    );
-                    ui.add_space(4.0);
-                    let meter_data = OutputMeterData {
-                        peak_l_db: meter_snap.peak_l_db,
-                        peak_r_db: meter_snap.peak_r_db,
-                        hold_l_db: meter_snap.hold_l_db,
-                        hold_r_db: meter_snap.hold_r_db,
-                        momentary_lufs: meter_snap.momentary_lufs,
-                        short_term_lufs: meter_snap.short_term_lufs,
-                    };
-                    draw_output_meter(ui, &meter_data, display_h);
-                });
-
-                if state.show_docked_inspector {
-                    ui.add_space(5.0);
-                    inspector::draw_inspector_section(ui, setter, state, params, shared);
-                }
+                display::draw_main_display(
+                    ui,
+                    &live_setter,
+                    state,
+                    params,
+                    shared,
+                    Vec2::new(display_w, display_h),
+                );
                 ui.add_space(4.0);
-
-                let master_data = MasterBarData {
-                    phase_inverted: params.phase_invert.value(),
-                    output_gain_db: params.output_gain.value(),
-                    auto_gain: params.auto_gain.value(),
-                    auto_gain_makeup_db: makeup_db,
-                    character_idx: params.character.value().to_idx(),
-                    scale_db: state.scale_db,
-                    peak_db: meter_snap.peak_l_db.max(meter_snap.peak_r_db),
+                let meter_data = OutputMeterData {
+                    peak_l_db: meter_snap.peak_l_db,
+                    peak_r_db: meter_snap.peak_r_db,
+                    hold_l_db: meter_snap.hold_l_db,
+                    hold_r_db: meter_snap.hold_r_db,
                     momentary_lufs: meter_snap.momentary_lufs,
+                    short_term_lufs: meter_snap.short_term_lufs,
                 };
-                let master_events = draw_master_bar(ui, &master_data);
-                apply_master_events(setter, params, state, master_events);
+                draw_output_meter(ui, &meter_data, display_h);
             });
-        });
 
-    shared.set_solo(state.effective_solo(params));
+            if state.show_docked_inspector {
+                ui.add_space(5.0);
+                inspector::draw_inspector_section(ui, &live_setter, state, params, shared);
+            }
+            ui.add_space(4.0);
+
+            let master_data = MasterBarData {
+                phase_inverted: live.read(&params.phase_invert),
+                output_gain_db: live.read(&params.output_gain),
+                auto_gain: live.read(&params.auto_gain),
+                auto_gain_makeup_db: makeup_db,
+                character_idx: live.read(&params.character).to_idx(),
+                scale_db: state.scale_db,
+                peak_db: meter_snap.peak_l_db.max(meter_snap.peak_r_db),
+                momentary_lufs: meter_snap.momentary_lufs,
+            };
+            let master_events = draw_master_bar(ui, &master_data);
+            apply_master_events(&live_setter, params, state, master_events);
+        });
+    });
+
+    shared.set_solo(state.effective_solo(params, live));
 }

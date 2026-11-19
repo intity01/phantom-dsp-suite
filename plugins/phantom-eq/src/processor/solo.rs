@@ -3,6 +3,7 @@
 
 use crate::dsp_state::{process_solo_sample, BandSnapshot};
 use crate::editor::NO_SOLO;
+use crate::live_mirror::ParamRead;
 use crate::params::{PhantomEqParams, NUM_BANDS};
 use phantom_dsp::{ChannelTarget, StereoBiquad};
 
@@ -45,11 +46,12 @@ impl SoloCrossfade {
     pub fn prepare(
         &mut self,
         params: &PhantomEqParams,
+        live: &impl ParamRead,
         requested: u8,
         sample_rate: f32,
     ) -> (f32, ChannelTarget) {
         let valid_req =
-            (requested as usize) < NUM_BANDS && params.bands[requested as usize].used.value();
+            (requested as usize) < NUM_BANDS && live.read(&params.bands[requested as usize].used);
         let target = if valid_req {
             if requested != self.active_band {
                 self.filter.reset();
@@ -61,7 +63,7 @@ impl SoloCrossfade {
         };
 
         if (self.active_band as usize) < NUM_BANDS {
-            let snap = BandSnapshot::from_band(&params.bands[self.active_band as usize]);
+            let snap = BandSnapshot::from_band_with(&params.bands[self.active_band as usize], live);
             self.filter.set_coeffs(snap.solo_coeffs(sample_rate));
             (target, snap.placement)
         } else {

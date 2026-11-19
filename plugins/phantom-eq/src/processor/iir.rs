@@ -2,6 +2,7 @@
 //! Strictly zero heap allocations: all active band metadata lives in fixed stack arrays.
 
 use crate::dsp_state::{process_cascaded_placement, process_spectral_placement, SharedBandGr};
+use crate::live_mirror::ParamRead;
 use crate::params::{PhantomEqParams, NUM_BANDS};
 use phantom_dsp::{
     CascadedCoeffs, CascadedStereoFilter, ChannelTarget, DynamicDetector, FilterSlope, FilterType,
@@ -48,8 +49,10 @@ impl Default for ActiveBand {
 }
 
 /// Prepares active (`used && enabled`) bands into a stack array and updates base filter coeffs.
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_iir_bands(
     params: &PhantomEqParams,
+    live: &impl ParamRead,
     filters: &mut [CascadedStereoFilter; NUM_BANDS],
     detectors: &mut [DynamicDetector; NUM_BANDS],
     spectral: &mut [SpectralBandProcessor; NUM_BANDS],
@@ -61,31 +64,31 @@ pub fn prepare_iir_bands(
     let mut count = 0usize;
 
     for (i, band) in params.bands.iter().enumerate() {
-        if !(band.used.value() && band.enabled.value()) {
+        if !(live.read(&band.used) && live.read(&band.enabled)) {
             shared_gr.store(i, 0.0);
             continue;
         }
-        let ftype: FilterType = band.filter_type.value().into();
-        let slope: FilterSlope = band.slope.value().into();
-        let placement: ChannelTarget = band.placement.value().into();
-        let freq = band.frequency.value();
-        let gain = band.gain.value();
-        let q = band.q.value();
-        let dyn_range = band.dynamic_range.value();
+        let ftype: FilterType = live.read(&band.filter_type).into();
+        let slope: FilterSlope = live.read(&band.slope).into();
+        let placement: ChannelTarget = live.read(&band.placement).into();
+        let freq = live.read(&band.frequency);
+        let gain = live.read(&band.gain);
+        let q = live.read(&band.q);
+        let dyn_range = live.read(&band.dynamic_range);
         let has_dynamics = dyn_range.abs() > 0.01;
-        let spectral_dyn = band.spectral_dynamics.value() && dyn_range.abs() > 0.05;
+        let spectral_dyn = live.read(&band.spectral_dynamics) && dyn_range.abs() > 0.05;
 
         let coeffs =
             CascadedCoeffs::calculate(ftype, slope, effective_sr, freq, gain, q, natural_phase);
         filters[i].set_coeffs(&coeffs);
 
         if spectral_dyn {
-            let att = band.dynamic_attack.value();
-            let rel = band.dynamic_release.value();
+            let att = live.read(&band.dynamic_attack);
+            let rel = live.read(&band.dynamic_release);
             spectral[i].set_ballistics(effective_sr, att, rel);
         } else if has_dynamics {
-            let att = band.dynamic_attack.value();
-            let rel = band.dynamic_release.value();
+            let att = live.read(&band.dynamic_attack);
+            let rel = live.read(&band.dynamic_release);
             detectors[i].update_ballistics(effective_sr, att, rel);
             detectors[i].update_sidechain(effective_sr, freq, q);
         } else {
@@ -101,9 +104,9 @@ pub fn prepare_iir_bands(
             gain,
             q,
             dyn_range,
-            dyn_thresh: band.dynamic_threshold.value(),
-            dyn_auto: band.dynamic_auto_thresh.value(),
-            dyn_ext_sc: band.dynamic_ext_sc.value(),
+            dyn_thresh: live.read(&band.dynamic_threshold),
+            dyn_auto: live.read(&band.dynamic_auto_thresh),
+            dyn_ext_sc: live.read(&band.dynamic_ext_sc),
             has_dynamics,
             spectral_dyn,
             last_applied_dyn: 0.0,

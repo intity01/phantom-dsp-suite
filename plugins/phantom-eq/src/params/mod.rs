@@ -63,7 +63,9 @@ impl Default for PhantomEqParams {
             )
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
-            bypass: BoolParam::new("Bypass", false),
+            // `.make_bypass()` sets `ParamFlags::BYPASS` (VST3 `kIsBypass`): enables the Cubase insert
+            // slot bypass button and the plugin window power button.
+            bypass: BoolParam::new("Bypass", false).make_bypass(),
             phase_invert: BoolParam::new("Phase Invert", false),
             bands: std::array::from_fn(|i| BandParams::new(i + 1)),
         }
