@@ -69,16 +69,10 @@ impl LinearPhaseEngine {
         let crossfade_table = build_crossfade_table();
         let mut scratch = EngineScratch::new(&fft_plan, &ifft_plan);
 
-        let m0 = TransferMatrix::new_identity(
-            &fft_plan,
-            &mut scratch.fft_in,
-            &mut scratch.fft_scratch,
-        );
-        let m1 = TransferMatrix::new_identity(
-            &fft_plan,
-            &mut scratch.fft_in,
-            &mut scratch.fft_scratch,
-        );
+        let m0 =
+            TransferMatrix::new_identity(&fft_plan, &mut scratch.fft_in, &mut scratch.fft_scratch);
+        let m1 =
+            TransferMatrix::new_identity(&fft_plan, &mut scratch.fft_in, &mut scratch.fft_scratch);
 
         Self {
             fft_plan,
@@ -140,7 +134,12 @@ impl LinearPhaseEngine {
     {
         self.update_stereo_curves(sample_rate, move |freq| {
             let db = magnitude_db_fn(freq);
-            StereoCurveDb { left: db, right: db, mid: 0.0, side: 0.0 }
+            StereoCurveDb {
+                left: db,
+                right: db,
+                mid: 0.0,
+                side: 0.0,
+            }
         });
     }
 
@@ -162,9 +161,19 @@ impl LinearPhaseEngine {
             let d0 = ch0_db_fn(freq);
             let d1 = ch1_db_fn(freq);
             if is_mid_side {
-                StereoCurveDb { left: 0.0, right: 0.0, mid: d0, side: d1 }
+                StereoCurveDb {
+                    left: 0.0,
+                    right: 0.0,
+                    mid: d0,
+                    side: d1,
+                }
             } else {
-                StereoCurveDb { left: d0, right: d1, mid: 0.0, side: 0.0 }
+                StereoCurveDb {
+                    left: d0,
+                    right: d1,
+                    mid: 0.0,
+                    side: 0.0,
+                }
             }
         });
     }
@@ -244,15 +253,15 @@ impl LinearPhaseEngine {
 
         let s = &mut self.scratch;
         s.fft_in.copy_from_slice(&self.input_history_l);
-        let res_l = self
-            .fft_plan
-            .process_with_scratch(&mut s.fft_in, &mut s.spec_in_l, &mut s.fft_scratch);
+        let res_l =
+            self.fft_plan
+                .process_with_scratch(&mut s.fft_in, &mut s.spec_in_l, &mut s.fft_scratch);
         debug_assert!(res_l.is_ok(), "realfft forward FFT failed (L): {:?}", res_l);
 
         s.fft_in.copy_from_slice(&self.input_history_r);
-        let res_r = self
-            .fft_plan
-            .process_with_scratch(&mut s.fft_in, &mut s.spec_in_r, &mut s.fft_scratch);
+        let res_r =
+            self.fft_plan
+                .process_with_scratch(&mut s.fft_in, &mut s.spec_in_r, &mut s.fft_scratch);
         debug_assert!(res_r.is_ok(), "realfft forward FFT failed (R): {:?}", res_r);
 
         if !self.dirty {

@@ -89,8 +89,12 @@ impl DynamicDetector {
         self.envelope_r += coeff_r * (abs_sc_r - self.envelope_r);
 
         // Denormal flushing
-        if self.envelope_l < 1e-15 { self.envelope_l = 0.0; }
-        if self.envelope_r < 1e-15 { self.envelope_r = 0.0; }
+        if self.envelope_l < 1e-15 {
+            self.envelope_l = 0.0;
+        }
+        if self.envelope_r < 1e-15 {
+            self.envelope_r = 0.0;
+        }
 
         let peak_env = self.envelope_l.max(self.envelope_r);
         if peak_env < 1e-6 {

@@ -73,7 +73,11 @@ fn synthesize_fir_channel(
     enforce_real_dc_nyquist(spec_work);
 
     let inv_res = ifft_plan.process_with_scratch(spec_work, ifft_out, ifft_scratch);
-    debug_assert!(inv_res.is_ok(), "realfft IFFT failed in FIR synthesis: {:?}", inv_res);
+    debug_assert!(
+        inv_res.is_ok(),
+        "realfft IFFT failed in FIR synthesis: {:?}",
+        inv_res
+    );
 
     let inv_n = 1.0 / FFT_SIZE as f32;
     let m = FIR_GROUP_DELAY;
@@ -93,7 +97,11 @@ fn synthesize_fir_channel(
     fft_in[KERNEL_LEN..FFT_SIZE].fill(0.0);
 
     let fwd_res = fft_plan.process_with_scratch(fft_in, out_spectrum, fft_scratch);
-    debug_assert!(fwd_res.is_ok(), "realfft FFT failed in FIR synthesis: {:?}", fwd_res);
+    debug_assert!(
+        fwd_res.is_ok(),
+        "realfft FFT failed in FIR synthesis: {:?}",
+        fwd_res
+    );
     enforce_real_dc_nyquist(out_spectrum);
 }
 
@@ -218,7 +226,11 @@ fn convolve_channel_ifft(
         &mut scratch.ifft_out,
         &mut scratch.ifft_scratch,
     );
-    debug_assert!(res.is_ok(), "realfft IFFT failed in audio convolution: {:?}", res);
+    debug_assert!(
+        res.is_ok(),
+        "realfft IFFT failed in audio convolution: {:?}",
+        res
+    );
 }
 
 /// Steady-state stereo frequency-domain convolution for one `HOP_SIZE` block.

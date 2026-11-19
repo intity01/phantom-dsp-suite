@@ -101,7 +101,11 @@ pub fn draw_band_inspector(
                     RichText::new(if data.is_enabled { "ON" } else { "OFF" })
                         .font(FontId::proportional(11.0))
                         .strong()
-                        .color(if data.is_enabled { band_color } else { TEXT_MUTED }),
+                        .color(if data.is_enabled {
+                            band_color
+                        } else {
+                            TEXT_MUTED
+                        }),
                 );
                 if toggle_btn.clicked() {
                     events.toggle_enabled = true;
@@ -114,9 +118,15 @@ pub fn draw_band_inspector(
                         RichText::new("SOLO")
                             .font(FontId::proportional(11.0))
                             .strong()
-                            .color(if data.is_soloed { ACCENT_AMBER } else { TEXT_MUTED }),
+                            .color(if data.is_soloed {
+                                ACCENT_AMBER
+                            } else {
+                                TEXT_MUTED
+                            }),
                     )
-                    .on_hover_text("Audition this band's frequency region (Bandpass / Cut monitor)");
+                    .on_hover_text(
+                        "Audition this band's frequency region (Bandpass / Cut monitor)",
+                    );
                 if solo_btn.clicked() {
                     events.toggle_solo = true;
                 }

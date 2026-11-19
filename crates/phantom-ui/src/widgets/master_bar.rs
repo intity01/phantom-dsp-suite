@@ -2,20 +2,14 @@
 //! Controls for Master Gain, Phase Invert, and Anti-Cramping status.
 
 use crate::theme::{BG_CARD, TEXT_DIMMED, TEXT_MUTED};
-use nih_plug_egui::egui::{
-    self, Align, Color32, FontId, Layout, Margin, RichText, Slider, Ui,
-};
+use nih_plug_egui::egui::{self, Align, Color32, FontId, Layout, Margin, RichText, Slider, Ui};
 
 pub struct MasterBarEvents {
     pub toggle_phase_invert: bool,
     pub set_output_gain: Option<f32>,
 }
 
-pub fn draw_master_bar(
-    ui: &mut Ui,
-    phase_inverted: bool,
-    output_gain: f32,
-) -> MasterBarEvents {
+pub fn draw_master_bar(ui: &mut Ui, phase_inverted: bool, output_gain: f32) -> MasterBarEvents {
     let mut events = MasterBarEvents {
         toggle_phase_invert: false,
         set_output_gain: None,
@@ -31,7 +25,11 @@ pub fn draw_master_bar(
                     phase_inverted,
                     RichText::new("Ø PHASE INVERT")
                         .font(FontId::proportional(11.0))
-                        .color(if phase_inverted { Color32::from_rgb(245, 158, 11) } else { TEXT_MUTED }),
+                        .color(if phase_inverted {
+                            Color32::from_rgb(245, 158, 11)
+                        } else {
+                            TEXT_MUTED
+                        }),
                 );
                 if phase_btn.clicked() {
                     events.toggle_phase_invert = true;
@@ -41,7 +39,12 @@ pub fn draw_master_bar(
 
                 // Master Output Gain
                 let mut gain_val = output_gain;
-                ui.label(RichText::new("OUTPUT GAIN:").font(FontId::proportional(11.0)).strong().color(TEXT_MUTED));
+                ui.label(
+                    RichText::new("OUTPUT GAIN:")
+                        .font(FontId::proportional(11.0))
+                        .strong()
+                        .color(TEXT_MUTED),
+                );
                 let slider_res = ui.add(
                     Slider::new(&mut gain_val, -24.0..=24.0)
                         .suffix(" dB")

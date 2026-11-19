@@ -146,5 +146,9 @@ fn test_linear_phase_lr_ms_crossfade_and_zero_alloc() {
 
     TRACKING.store(false, Ordering::SeqCst);
     let allocs = ALLOC_COUNT.load(Ordering::SeqCst);
-    assert_eq!(allocs, 0, "Expected 0 heap allocations in audio/update path, got {}", allocs);
+    assert_eq!(
+        allocs, 0,
+        "Expected 0 heap allocations in audio/update path, got {}",
+        allocs
+    );
 }

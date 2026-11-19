@@ -1,7 +1,9 @@
 //! Pure Helper Functions for the EQ Canvas Display
 //! Node hit-testing, Pro-Q band targeting for canvas double-clicks, and render-data conversion.
 
-use crate::params::{BandParams, ChannelPlacementParam, FilterTypeParam, PhantomEqParams, NUM_BANDS};
+use crate::params::{
+    BandParams, ChannelPlacementParam, FilterTypeParam, PhantomEqParams, NUM_BANDS,
+};
 use nih_plug_egui::egui::Pos2;
 use phantom_dsp::BiquadCoeffs;
 use phantom_ui::NodeRenderData;

@@ -212,6 +212,17 @@ pub struct PhantomEqParams {
     pub bands: [BandParams; NUM_BANDS],
 }
 
+const DEFAULT_BANDS: [(FilterTypeParam, f32, f32); NUM_BANDS] = [
+    (FilterTypeParam::LowCut, 25.0, 0.707),
+    (FilterTypeParam::LowShelf, 80.0, 0.707),
+    (FilterTypeParam::Bell, 250.0, 1.0),
+    (FilterTypeParam::Bell, 700.0, 1.0),
+    (FilterTypeParam::Bell, 2000.0, 1.0),
+    (FilterTypeParam::Bell, 4500.0, 1.0),
+    (FilterTypeParam::HighShelf, 8000.0, 0.707),
+    (FilterTypeParam::HighCut, 18000.0, 0.707),
+];
+
 impl Default for PhantomEqParams {
     fn default() -> Self {
         Self {
@@ -230,16 +241,17 @@ impl Default for PhantomEqParams {
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
             bypass: BoolParam::new("Bypass", false),
             phase_invert: BoolParam::new("Phase Invert", false),
-            bands: [
-                BandParams::new(1, FilterTypeParam::LowCut, 25.0, 0.0, 0.707, ChannelPlacementParam::Stereo),
-                BandParams::new(2, FilterTypeParam::LowShelf, 80.0, 0.0, 0.707, ChannelPlacementParam::Stereo),
-                BandParams::new(3, FilterTypeParam::Bell, 250.0, 0.0, 1.0, ChannelPlacementParam::Stereo),
-                BandParams::new(4, FilterTypeParam::Bell, 700.0, 0.0, 1.0, ChannelPlacementParam::Stereo),
-                BandParams::new(5, FilterTypeParam::Bell, 2000.0, 0.0, 1.0, ChannelPlacementParam::Stereo),
-                BandParams::new(6, FilterTypeParam::Bell, 4500.0, 0.0, 1.0, ChannelPlacementParam::Stereo),
-                BandParams::new(7, FilterTypeParam::HighShelf, 8000.0, 0.0, 0.707, ChannelPlacementParam::Stereo),
-                BandParams::new(8, FilterTypeParam::HighCut, 18000.0, 0.0, 0.707, ChannelPlacementParam::Stereo),
-            ],
+            bands: std::array::from_fn(|i| {
+                let (filter_type, freq, q) = DEFAULT_BANDS[i];
+                BandParams::new(
+                    i + 1,
+                    filter_type,
+                    freq,
+                    0.0,
+                    q,
+                    ChannelPlacementParam::Stereo,
+                )
+            }),
         }
     }
 }

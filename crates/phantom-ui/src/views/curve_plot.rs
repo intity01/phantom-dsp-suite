@@ -194,7 +194,10 @@ pub fn draw_band_curve(
         );
         painter.add(Shape::line(
             points,
-            Stroke::new(stroke_w, Color32::from_rgba_unmultiplied(r, g, b, stroke_alpha)),
+            Stroke::new(
+                stroke_w,
+                Color32::from_rgba_unmultiplied(r, g, b, stroke_alpha),
+            ),
         ));
     } else {
         // Subtle ghost preview when the selected band is disabled

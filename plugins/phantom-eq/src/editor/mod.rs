@@ -90,7 +90,9 @@ pub fn draw_editor(
     let sample_rate = shared.sample_rate();
     state.sample_rate = sample_rate;
     if state.show_spectrum {
-        state.spectrum_processor.update(&shared.spectrum, sample_rate);
+        state
+            .spectrum_processor
+            .update(&shared.spectrum, sample_rate);
     }
 
     configure_visuals(ctx);
@@ -109,11 +111,8 @@ pub fn draw_editor(
             inspector::draw_inspector_section(ui, setter, state, params, shared);
             ui.add_space(4.0);
 
-            let master_events = draw_master_bar(
-                ui,
-                params.phase_invert.value(),
-                params.output_gain.value(),
-            );
+            let master_events =
+                draw_master_bar(ui, params.phase_invert.value(), params.output_gain.value());
             if master_events.toggle_phase_invert {
                 setter.begin_set_parameter(&params.phase_invert);
                 setter.set_parameter(&params.phase_invert, !params.phase_invert.value());

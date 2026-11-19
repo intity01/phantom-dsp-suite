@@ -79,12 +79,20 @@ pub fn draw_main_display(
             active_count += 1;
         }
     }
-    draw_combined_curve(&painter, &map, &active_coeffs[..active_count], state.sample_rate);
+    draw_combined_curve(
+        &painter,
+        &map,
+        &active_coeffs[..active_count],
+        state.sample_rate,
+    );
 
     // 5. Pro-Q Mouse Interactions
     let node_positions: [Pos2; NUM_BANDS] = std::array::from_fn(|i| {
         let b = &params.bands[i];
-        Pos2::new(map.freq_to_x(b.frequency.value()), map.db_to_y(b.gain.value()))
+        Pos2::new(
+            map.freq_to_x(b.frequency.value()),
+            map.db_to_y(b.gain.value()),
+        )
     });
 
     let pointer_pos = ui.input(|i| i.pointer.hover_pos());
@@ -186,7 +194,13 @@ pub fn draw_main_display(
         draw_node(&painter, &map, &data, hovered_node == Some(i), false);
     }
     let sel_data = build_node_render_data(params, active_sel, soloed_band == Some(active_sel));
-    draw_node(&painter, &map, &sel_data, hovered_node == Some(active_sel), true);
+    draw_node(
+        &painter,
+        &map,
+        &sel_data,
+        hovered_node == Some(active_sel),
+        true,
+    );
 
     if let Some(h_idx) = hovered_node {
         let tip_data = build_node_render_data(params, h_idx, soloed_band == Some(h_idx));

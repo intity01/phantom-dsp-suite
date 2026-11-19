@@ -5,7 +5,13 @@ use nih_plug_egui::egui::{Color32, Painter, Pos2, Stroke};
 use std::f32::consts::PI;
 
 /// Draws a Lucide-style Power / Bypass Icon
-pub fn draw_power_icon(painter: &Painter, center: Pos2, radius: f32, color: Color32, stroke_width: f32) {
+pub fn draw_power_icon(
+    painter: &Painter,
+    center: Pos2,
+    radius: f32,
+    color: Color32,
+    stroke_width: f32,
+) {
     let stroke = Stroke::new(stroke_width, color);
     // Draw open circular arc (from 45 deg to 315 deg)
     let num_segments = 16;
@@ -21,11 +27,20 @@ pub fn draw_power_icon(painter: &Painter, center: Pos2, radius: f32, color: Colo
     // Vertical line in top gap
     let top_y = center.y - radius * 1.15;
     let mid_y = center.y - radius * 0.15;
-    painter.line_segment([Pos2::new(center.x, top_y), Pos2::new(center.x, mid_y)], stroke);
+    painter.line_segment(
+        [Pos2::new(center.x, top_y), Pos2::new(center.x, mid_y)],
+        stroke,
+    );
 }
 
 /// Draws a Phase Invert Icon (Ø)
-pub fn draw_phase_icon(painter: &Painter, center: Pos2, radius: f32, color: Color32, stroke_width: f32) {
+pub fn draw_phase_icon(
+    painter: &Painter,
+    center: Pos2,
+    radius: f32,
+    color: Color32,
+    stroke_width: f32,
+) {
     let stroke = Stroke::new(stroke_width, color);
     painter.circle_stroke(center, radius, stroke);
     let slash_offset = radius * 1.3;
@@ -39,22 +54,40 @@ pub fn draw_phase_icon(painter: &Painter, center: Pos2, radius: f32, color: Colo
 }
 
 /// Draws an Oversampling HQ Chip Icon
-pub fn draw_chip_icon(painter: &Painter, center: Pos2, size: f32, color: Color32, stroke_width: f32) {
+pub fn draw_chip_icon(
+    painter: &Painter,
+    center: Pos2,
+    size: f32,
+    color: Color32,
+    stroke_width: f32,
+) {
     let stroke = Stroke::new(stroke_width, color);
     let half = size * 0.5;
     // Main rectangle
-    let rect = nih_plug_egui::egui::Rect::from_center_size(center, nih_plug_egui::egui::Vec2::splat(size));
-    painter.rect_stroke(rect, nih_plug_egui::egui::CornerRadius::same(2), stroke, nih_plug_egui::egui::StrokeKind::Inside);
+    let rect =
+        nih_plug_egui::egui::Rect::from_center_size(center, nih_plug_egui::egui::Vec2::splat(size));
+    painter.rect_stroke(
+        rect,
+        nih_plug_egui::egui::CornerRadius::same(2),
+        stroke,
+        nih_plug_egui::egui::StrokeKind::Inside,
+    );
 
     // Pins on left & right
     let pin_len = size * 0.25;
     for &y_off in &[-half * 0.5, half * 0.5] {
         painter.line_segment(
-            [Pos2::new(center.x - half - pin_len, center.y + y_off), Pos2::new(center.x - half, center.y + y_off)],
+            [
+                Pos2::new(center.x - half - pin_len, center.y + y_off),
+                Pos2::new(center.x - half, center.y + y_off),
+            ],
             stroke,
         );
         painter.line_segment(
-            [Pos2::new(center.x + half, center.y + y_off), Pos2::new(center.x + half + pin_len, center.y + y_off)],
+            [
+                Pos2::new(center.x + half, center.y + y_off),
+                Pos2::new(center.x + half + pin_len, center.y + y_off),
+            ],
             stroke,
         );
     }

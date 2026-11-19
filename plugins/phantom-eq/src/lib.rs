@@ -184,12 +184,20 @@ impl Plugin for PhantomEq {
 
         match mode {
             ProcessingModeParam::ZeroLatency => {
-                self.processor
-                    .process_zero_latency(&self.params, left_channel, right_channel, final_gain);
+                self.processor.process_zero_latency(
+                    &self.params,
+                    left_channel,
+                    right_channel,
+                    final_gain,
+                );
             }
             ProcessingModeParam::LinearPhase => {
-                self.processor
-                    .process_linear_phase(&self.params, left_channel, right_channel, final_gain);
+                self.processor.process_linear_phase(
+                    &self.params,
+                    left_channel,
+                    right_channel,
+                    final_gain,
+                );
             }
         }
 

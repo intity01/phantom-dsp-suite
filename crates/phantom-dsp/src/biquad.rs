@@ -211,10 +211,18 @@ impl StereoBiquad {
         self.z2_r = self.coeffs.b2 * in_r - self.coeffs.a2 * out_r;
 
         // Anti-denormal protection (zero allocation, negligible CPU overhead)
-        if self.z1_l.abs() < 1e-25 { self.z1_l = 0.0; }
-        if self.z2_l.abs() < 1e-25 { self.z2_l = 0.0; }
-        if self.z1_r.abs() < 1e-25 { self.z1_r = 0.0; }
-        if self.z2_r.abs() < 1e-25 { self.z2_r = 0.0; }
+        if self.z1_l.abs() < 1e-25 {
+            self.z1_l = 0.0;
+        }
+        if self.z2_l.abs() < 1e-25 {
+            self.z2_l = 0.0;
+        }
+        if self.z1_r.abs() < 1e-25 {
+            self.z1_r = 0.0;
+        }
+        if self.z2_r.abs() < 1e-25 {
+            self.z2_r = 0.0;
+        }
 
         (out_l, out_r)
     }
