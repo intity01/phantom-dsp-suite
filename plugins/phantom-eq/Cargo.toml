@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Intity01"]
 license = "MIT OR Apache-2.0"
-description = "Phantom EQ — Professional 8-Band Dynamic Parametric Equalizer (VST3/CLAP)"
+description = "Phantom EQ — Professional 24-Band Dynamic Parametric Equalizer (VST3/CLAP)"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

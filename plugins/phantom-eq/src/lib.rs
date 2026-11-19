@@ -1,18 +1,19 @@
-//! Phantom EQ - High-Performance, Zero-Telemetry Digital Parametric Equalizer
-//! Professional 8-band parametric EQ with M/S routing, Dynamic EQ, 2x Oversampling,
-//! Linear Phase FIR mode, and Per-Band Solo Audition.
+//! Phantom EQ — High-Performance, Zero-Telemetry Mastering Parametric Equalizer
+//! 24 dynamic bands (clean empty Pro-Q 4 startup), 10 shapes, 8 slopes (6 dB..Brickwall),
+//! Zero Latency / Natural Phase / Linear Phase FIR, 2x/4x Polyphase OS, External Sidechain,
+//! Character saturation, Auto-Gain, EBU R128 LUFS metering, and Headphone Solo Audition.
 
 pub mod dsp_state;
 pub mod editor;
 pub mod params;
 pub mod processor;
 
-use dsp_state::feed_spectrum;
+use dsp_state::SharedBandGr;
 use editor::{draw_editor, EditorShared, EditorState, NO_SOLO};
 use nih_plug::prelude::*;
 use nih_plug_egui::create_egui_editor;
-use params::{PhantomEqParams, ProcessingModeParam, NUM_BANDS};
-use phantom_dsp::SharedSpectrum;
+use params::{PhantomEqParams, ProcessingModeParam};
+use phantom_dsp::{SharedMeters, SharedSpectrum};
 use processor::EqProcessor;
 use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
@@ -26,6 +27,8 @@ pub struct PhantomEq {
     params: Arc<PhantomEqParams>,
     processor: EqProcessor,
     shared_spectrum: Arc<SharedSpectrum>,
+    shared_meters: Arc<SharedMeters>,
+    shared_band_gr: Arc<SharedBandGr>,
     solo_band: Arc<AtomicU8>,
     shared_sample_rate: Arc<AtomicU32>,
     shared_latency: Arc<AtomicU32>,
@@ -40,6 +43,8 @@ impl Default for PhantomEq {
             params: Arc::new(PhantomEqParams::default()),
             processor: EqProcessor::new(),
             shared_spectrum: Arc::new(SharedSpectrum::new()),
+            shared_meters: Arc::new(SharedMeters::new()),
+            shared_band_gr: Arc::new(SharedBandGr::new()),
             solo_band: Arc::new(AtomicU8::new(NO_SOLO)),
             shared_sample_rate: Arc::new(AtomicU32::new(44100.0_f32.to_bits())),
             shared_latency: Arc::new(AtomicU32::new(0)),
@@ -60,6 +65,11 @@ impl Plugin for PhantomEq {
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
         main_input_channels: NonZeroU32::new(2),
         main_output_channels: NonZeroU32::new(2),
+        aux_input_ports: &[new_nonzero_u32(2)],
+        names: PortNames {
+            aux_inputs: &["Sidechain"],
+            ..PortNames::const_default()
+        },
         ..AudioIOLayout::const_default()
     }];
 
@@ -79,6 +89,8 @@ impl Plugin for PhantomEq {
         let editor_state_handle = self.params.editor_state.clone();
         let shared = EditorShared {
             spectrum: self.shared_spectrum.clone(),
+            meters: self.shared_meters.clone(),
+            band_gr: self.shared_band_gr.clone(),
             solo_band: self.solo_band.clone(),
             sample_rate_bits: self.shared_sample_rate.clone(),
             latency_samples: self.shared_latency.clone(),
@@ -104,6 +116,8 @@ impl Plugin for PhantomEq {
         self.shared_sample_rate
             .store(sr.to_bits(), Ordering::Relaxed);
         self.processor.initialize(sr);
+        self.shared_meters.reset();
+        self.shared_band_gr.clear_all();
 
         let mode = self.params.mode.value();
         self.last_mode = mode;
@@ -119,12 +133,14 @@ impl Plugin for PhantomEq {
 
     fn reset(&mut self) {
         self.processor.reset();
+        self.shared_meters.reset();
+        self.shared_band_gr.clear_all();
     }
 
     fn process(
         &mut self,
         buffer: &mut Buffer,
-        _aux: &mut AuxiliaryBuffers,
+        aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         let mode = self.params.mode.value();
@@ -140,23 +156,7 @@ impl Plugin for PhantomEq {
             self.processor.on_mode_switched(mode);
         }
 
-        if self.params.bypass.value() {
-            self.was_bypassed = true;
-            return ProcessStatus::Normal;
-        }
-        if self.was_bypassed {
-            self.was_bypassed = false;
-            self.processor.reset();
-        }
-
-        let out_gain_linear = util::db_to_gain(self.params.output_gain.value());
-        let phase_mult = if self.params.phase_invert.value() {
-            -1.0
-        } else {
-            1.0
-        };
-        let final_gain = out_gain_linear * phase_mult;
-
+        let editor_open = self.params.editor_state.is_open();
         let slices = buffer.as_slice();
         if slices.len() < 2 {
             return ProcessStatus::Normal;
@@ -165,44 +165,65 @@ impl Plugin for PhantomEq {
         let left_channel = &mut left_slice[0];
         let right_channel = &mut right_slice[0];
 
-        // Per-Band Solo Audition monitors the selected band cleanly
-        let solo_raw = self.solo_band.load(Ordering::Relaxed);
-        if (solo_raw as usize) < NUM_BANDS {
-            self.processor.process_solo(
-                &self.params,
-                solo_raw,
-                left_channel,
-                right_channel,
-                final_gain,
-            );
-            if self.params.editor_state.is_open() {
-                feed_spectrum(&self.shared_spectrum, left_channel, right_channel);
+        if self.params.bypass.value() {
+            self.was_bypassed = true;
+            self.shared_band_gr.clear_all();
+            self.processor
+                .meter_bypass_block(left_channel, right_channel, &self.shared_meters);
+            if editor_open {
+                self.shared_spectrum
+                    .push_stereo_pre(left_channel, right_channel);
+                self.shared_spectrum
+                    .push_stereo_post_and_side(left_channel, right_channel);
             }
             return ProcessStatus::Normal;
         }
-        self.processor.clear_solo_state();
-
-        match mode {
-            ProcessingModeParam::ZeroLatency => {
-                self.processor.process_zero_latency(
-                    &self.params,
-                    left_channel,
-                    right_channel,
-                    final_gain,
-                );
-            }
-            ProcessingModeParam::LinearPhase => {
-                self.processor.process_linear_phase(
-                    &self.params,
-                    left_channel,
-                    right_channel,
-                    final_gain,
-                );
-            }
+        if self.was_bypassed {
+            self.was_bypassed = false;
+            self.processor.reset();
         }
 
-        if self.params.editor_state.is_open() {
-            feed_spectrum(&self.shared_spectrum, left_channel, right_channel);
+        if editor_open {
+            self.shared_spectrum
+                .push_stereo_pre(left_channel, right_channel);
+        }
+
+        let (sc_left, sc_right): (&[f32], &[f32]) = aux
+            .inputs
+            .first()
+            .map(|b| b.as_slice_immutable())
+            .map(|s| match s {
+                [l, r, ..] => (&l[..], &r[..]),
+                [l] => (&l[..], &l[..]),
+                _ => (&[][..], &[][..]),
+            })
+            .unwrap_or((&[], &[]));
+
+        let out_gain_linear = util::db_to_gain(self.params.output_gain.value());
+        let phase_mult = if self.params.phase_invert.value() {
+            -1.0
+        } else {
+            1.0
+        };
+        let final_gain = out_gain_linear * phase_mult;
+        let requested_solo = self.solo_band.load(Ordering::Relaxed);
+
+        self.processor.process_block(
+            &self.params,
+            mode,
+            requested_solo,
+            left_channel,
+            right_channel,
+            sc_left,
+            sc_right,
+            final_gain,
+            &self.shared_meters,
+            &self.shared_band_gr,
+        );
+
+        if editor_open {
+            self.shared_spectrum
+                .push_stereo_post_and_side(left_channel, right_channel);
         }
 
         ProcessStatus::Normal
@@ -212,7 +233,7 @@ impl Plugin for PhantomEq {
 impl ClapPlugin for PhantomEq {
     const CLAP_ID: &'static str = "com.phantom-dsp.phantom-eq";
     const CLAP_DESCRIPTION: Option<&'static str> =
-        Some("High-performance zero-telemetry parametric digital equalizer with M/S and Dynamics");
+        Some("Mastering-grade 24-band dynamic parametric EQ with Natural/Linear Phase & LUFS");
     const CLAP_MANUAL_URL: Option<&'static str> = None;
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[
