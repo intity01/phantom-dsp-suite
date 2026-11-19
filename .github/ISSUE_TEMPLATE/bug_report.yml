@@ -1,0 +1,119 @@
+name: Bug Report
+description: Report a DSP, UI, DAW compatibility, or Phantom Launcher bug
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve **Phantom DSP Suite**!
+        Please include your DAW, OS, sample rate, and buffer size so we can reproduce audio issues accurately.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      options:
+        - "Phantom EQ (VST3 / CLAP)"
+        - "Phantom Launcher (GUI / CLI)"
+        - "phantom-dsp (DSP Library)"
+        - "phantom-ui (UI Toolkit)"
+        - "Installer Scripts / Build / CI"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - "Windows 11 (x86_64)"
+        - "Windows 10 (x86_64)"
+        - "macOS (Apple Silicon / arm64)"
+        - "macOS (Intel / x86_64)"
+        - "Linux (x86_64)"
+        - "Other (specify in description)"
+    validations:
+      required: true
+
+  - type: input
+    id: daw
+    attributes:
+      label: DAW / Host & Version
+      description: Which DAW or host loaded the plugin? (Write "N/A" for standalone Launcher issues)
+      placeholder: "e.g. Cubase 15, Reaper 7.22, Ableton Live 12, Bitwig Studio 5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: format
+    attributes:
+      label: Plugin Format
+      options:
+        - "VST3"
+        - "CLAP"
+        - "Both VST3 & CLAP"
+        - "Standalone (Phantom Launcher)"
+        - "N/A"
+    validations:
+      required: true
+
+  - type: input
+    id: sample_rate
+    attributes:
+      label: Sample Rate & Buffer Size
+      description: Audio interface sample rate and ASIO/CoreAudio/PipeWire buffer size
+      placeholder: "e.g. 48 kHz / 256 samples (or 96 kHz / 64 samples)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: processing_mode
+    attributes:
+      label: Processing Mode (Phantom EQ)
+      options:
+        - "Zero Latency (Analog IIR)"
+        - "Zero Latency + 2x Anti-Cramping Oversampling"
+        - "Linear Phase (Mastering FIR)"
+        - "Both / All Modes"
+        - "N/A"
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Phantom DSP Suite Version / Commit
+      placeholder: "e.g. v0.1.0 or git commit hash"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what happened vs. what you expected.
+      placeholder: "e.g. Switching to Linear Phase at 64-sample buffer causes..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reliably reproduce the behavior.
+      value: |
+        1. Insert Phantom EQ on a stereo audio track
+        2. Set ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Crash Output / SHA-256 Info
+      description: Optional terminal output, `phantom-launcher --verify` output, or crash logs.
+      render: text
+    validations:
+      required: false

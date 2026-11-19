@@ -1,0 +1,59 @@
+name: Feature Request
+description: Suggest a new DSP feature, UI enhancement, or future Phantom plugin
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement to **Phantom DSP Suite**!
+        Please note that all features must respect our **Clean-Room DSP** and **100% Offline / Zero-Telemetry** principles.
+
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target Plugin or Crate
+      options:
+        - "Phantom EQ"
+        - "Phantom Launcher"
+        - "Future Suite Plugin (Comp / Limiter / MB / Saturn)"
+        - "phantom-dsp (Shared DSP Library)"
+        - "phantom-ui (Shared UI Toolkit)"
+        - "Build / Packaging / Documentation"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Workflow Problem or Use Case
+      description: What mixing, mastering, or workflow problem does this solve?
+      placeholder: "e.g. When mastering acoustic material, it would help to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe the DSP behavior, UI interaction, or CLI option you envision.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative designs or workarounds you considered.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Project Principles Alignment
+      options:
+        - label: This feature can be implemented strictly offline with zero telemetry.
+          required: true
+        - label: This feature can be built via clean-room DSP/UI engineering without copying proprietary assets or code.
+          required: true

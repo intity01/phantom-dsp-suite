@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "crates/phantom-dsp",
+    "crates/phantom-ui",
+    "plugins/phantom-eq",
+    "apps/phantom-launcher",
+]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = false
+strip = false

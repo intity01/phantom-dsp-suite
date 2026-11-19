@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test Suite (DSP & Launcher)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux GUI & OpenGL build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxcb1-dev \
+            libxcb-icccm4-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libx11-xcb-dev \
+            libgl1-mesa-dev \
+            pkg-config \
+            libx11-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxkbcommon-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run phantom-dsp release tests
+        run: cargo test -p phantom-dsp --release -- --nocapture
+
+      - name: Run phantom-launcher release tests
+        run: cargo test -p phantom-launcher --release -- --nocapture
+
+  check:
+    name: Workspace Check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux GUI & OpenGL build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxcb1-dev \
+            libxcb-icccm4-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libx11-xcb-dev \
+            libgl1-mesa-dev \
+            pkg-config \
+            libx11-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxkbcommon-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check entire Cargo workspace
+        run: cargo check --workspace
+
+  format:
+    name: Rustfmt Check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain with rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting against rustfmt.toml
+        run: cargo fmt --all -- --check
+
+  modularity:
+    name: Modularity Audit (<= 300 lines/file)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Audit Rust source file line counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAX_LINES=300
+          VIOLATIONS=0
+
+          echo "=== Rust Source Modularity Audit (limit: ${MAX_LINES} lines) ==="
+          while IFS= read -r file; do
+            lines=$(wc -l < "$file")
+            printf "%4d  %s\n" "$lines" "$file"
+            if [ "$lines" -gt "$MAX_LINES" ]; then
+              if [[ "$file" == */tests/* || "$file" == *_tests.rs ]]; then
+                echo "::warning file=${file},title=Test file exceeds ${MAX_LINES} lines::${file} has ${lines} lines (soft limit: ${MAX_LINES})"
+              else
+                echo "::error file=${file},title=Source file exceeds ${MAX_LINES} lines::${file} has ${lines} lines (strict limit: ${MAX_LINES})"
+                VIOLATIONS=$((VIOLATIONS + 1))
+              fi
+            fi
+          done < <(find crates plugins apps -type f -name '*.rs' | sort)
+
+          if [ "$VIOLATIONS" -gt 0 ]; then
+            echo "Modularity audit failed: ${VIOLATIONS} production source file(s) exceed ${MAX_LINES} lines."
+            exit 1
+          fi
+          echo "Modularity audit passed: all production Rust files are <= ${MAX_LINES} lines."

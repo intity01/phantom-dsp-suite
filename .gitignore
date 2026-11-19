@@ -1,0 +1,68 @@
+# ==============================================================================
+# Phantom DSP Suite — .gitignore
+# Rust Cargo Workspace + Audio Plugins (VST3 / CLAP) + Desktop Launcher
+# ==============================================================================
+
+# Rust build artifacts
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+*.dSYM/
+
+# Packaged binary distributions (built locally or by GitHub Releases)
+/dist/
+dist/
+
+# Compiled audio plugin binaries & native libraries
+*.vst3
+*.clap
+*.dll
+*.so
+*.dylib
+*.exe
+*.lib
+*.a
+*.exp
+
+# Ignore stale nested member lockfiles; keep root workspace /Cargo.lock tracked
+crates/**/Cargo.lock
+plugins/**/Cargo.lock
+apps/**/Cargo.lock
+
+# Note: Keep linker definition files, workspace manifests, lockfile, scripts & docs tracked
+!exports.def
+!plugins/**/exports.def
+!/Cargo.toml
+!/Cargo.lock
+!install_to_cubase.ps1
+!install_to_cubase.bat
+
+# OS junk files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+desktop.ini
+
+# Editors & IDEs
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Logs, profiling, and temporary files
+*.log
+*.tmp
+*.bak
+*.profraw
+*.profdata
+coverage/

@@ -1,0 +1,16 @@
+[package]
+name = "phantom-eq"
+version = "0.1.0"
+edition = "2021"
+authors = ["Intity01"]
+license = "MIT OR Apache-2.0"
+description = "Phantom EQ — Professional 8-Band Dynamic Parametric Equalizer (VST3/CLAP)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+phantom-dsp = { path = "../../crates/phantom-dsp" }
+phantom-ui = { path = "../../crates/phantom-ui" }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false, features = ["vst3"] }
+nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }

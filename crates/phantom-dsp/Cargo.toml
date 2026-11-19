@@ -1,0 +1,10 @@
+[package]
+name = "phantom-dsp"
+version = "0.1.0"
+edition = "2021"
+authors = ["Intity01"]
+license = "MIT OR Apache-2.0"
+description = "High-performance, pure audio DSP algorithms for the Phantom DSP Suite"
+
+[dependencies]
+realfft = "3.4"

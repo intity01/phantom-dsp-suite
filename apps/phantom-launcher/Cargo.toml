@@ -1,0 +1,14 @@
+[package]
+name = "phantom-launcher"
+version = "0.1.0"
+edition = "2021"
+authors = ["Intity01"]
+license = "MIT OR Apache-2.0"
+description = "Phantom Launcher — Open-Source Plugin Hub & 1-Click Offline Installer"
+
+[dependencies]
+eframe = { version = "0.31", default-features = false, features = ["glow", "default_fonts"] }
+sha2 = "0.10"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { version = "0.31", default-features = false, features = ["glow", "default_fonts", "x11"] }
