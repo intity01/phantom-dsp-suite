@@ -10,7 +10,7 @@ use nih_plug_egui::egui::{
 };
 
 /// Recommended fixed width (in logical points) for the vertical output meter strip.
-pub const OUTPUT_METER_WIDTH: f32 = 54.0;
+pub const OUTPUT_METER_WIDTH: f32 = 46.0;
 
 #[derive(Debug, Clone, Copy)]
 pub struct OutputMeterData {
@@ -139,9 +139,9 @@ pub fn draw_output_meter(ui: &mut Ui, data: &OutputMeterData, height: f32) {
     let meter_bot = (rect.max.y - readout_h - 6.0).max(meter_top + 40.0);
     let meter_h = meter_bot - meter_top;
 
-    let bar_w = 8.0;
-    let bar_gap = 3.0;
-    let left_x = rect.min.x + 8.0;
+    let bar_w = 7.0;
+    let bar_gap = 2.0;
+    let left_x = rect.min.x + 6.0;
     let right_x = left_x + bar_w + bar_gap;
 
     let bar_l = Rect::from_min_size(Pos2::new(left_x, meter_top), Vec2::new(bar_w, meter_h));
@@ -152,7 +152,7 @@ pub fn draw_output_meter(ui: &mut Ui, data: &OutputMeterData, height: f32) {
 
     // Subtle dB scale marks along right side of meter bars
     let tick_col = Color32::from_rgba_unmultiplied(148, 163, 184, 125);
-    let tick_x = right_x + bar_w + 3.0;
+    let tick_x = right_x + bar_w + 2.5;
     for &(db, label) in &[
         (0.0_f32, "0"),
         (-6.0, "-6"),
@@ -166,10 +166,10 @@ pub fn draw_output_meter(ui: &mut Ui, data: &OutputMeterData, height: f32) {
             Stroke::new(1.0_f32, with_alpha(TEXT_MUTED, 70)),
         );
         painter.text(
-            Pos2::new(rect.max.x - 4.0, y),
+            Pos2::new(rect.max.x - 3.0, y),
             Align2::RIGHT_CENTER,
             label,
-            FontId::proportional(8.0),
+            FontId::proportional(7.5),
             tick_col,
         );
     }
@@ -178,8 +178,8 @@ pub fn draw_output_meter(ui: &mut Ui, data: &OutputMeterData, height: f32) {
     let sep_y = rect.max.y - readout_h;
     painter.line_segment(
         [
-            Pos2::new(rect.min.x + 5.0, sep_y),
-            Pos2::new(rect.max.x - 5.0, sep_y),
+            Pos2::new(rect.min.x + 4.0, sep_y),
+            Pos2::new(rect.max.x - 4.0, sep_y),
         ],
         Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 255, 255, 18)),
     );
@@ -203,14 +203,14 @@ pub fn draw_output_meter(ui: &mut Ui, data: &OutputMeterData, height: f32) {
         Pos2::new(rect.center().x, sep_y + 13.0),
         Align2::CENTER_CENTER,
         lufs_str,
-        FontId::proportional(10.5),
+        FontId::proportional(9.5),
         lufs_col,
     );
     painter.text(
         Pos2::new(rect.center().x, sep_y + 25.0),
         Align2::CENTER_CENTER,
         "LUFS",
-        FontId::proportional(8.0),
+        FontId::proportional(7.5),
         TEXT_MUTED,
     );
 

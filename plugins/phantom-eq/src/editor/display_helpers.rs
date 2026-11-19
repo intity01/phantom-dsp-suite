@@ -5,16 +5,15 @@
 use super::{EditorShared, EditorState};
 use crate::live_mirror::{LiveParamMirror, LiveSetter};
 use crate::params::{
-    BandParams, ChannelPlacementParam, CharacterModeParam, FilterSlopeParam, FilterTypeParam,
-    PhantomEqParams, NUM_BANDS,
+    BandParams, ChannelPlacementParam, FilterSlopeParam, FilterTypeParam, PhantomEqParams,
+    NUM_BANDS,
 };
 use nih_plug_egui::egui::Pos2;
 use phantom_dsp::CascadedCoeffs;
-use phantom_ui::{MasterBarEvents, NodeRenderData};
+use phantom_ui::NodeRenderData;
 use std::f32::consts::FRAC_1_SQRT_2;
 
 pub const NODE_HIT_RADIUS: f32 = 15.0;
-const SMART_BAND_FREQS: [f32; 8] = [100.0, 320.0, 1000.0, 3200.0, 10000.0, 60.0, 600.0, 6000.0];
 
 pub fn band_cascaded_coeffs(
     band: &BandParams,
@@ -124,20 +123,6 @@ pub fn create_band_at(
     Some(idx)
 }
 
-/// Creates a Bell band at an uncrowded default frequency (for the `[+ BAND]` toolbar button).
-pub fn create_smart_default_band(
-    setter: &LiveSetter,
-    params: &PhantomEqParams,
-    state: &mut EditorState,
-    now_sec: f64,
-) -> Option<usize> {
-    let used_count = (0..NUM_BANDS)
-        .filter(|&i| setter.read(&params.bands[i].used))
-        .count();
-    let freq = SMART_BAND_FREQS[used_count % SMART_BAND_FREQS.len()];
-    create_band_at(setter, params, state, freq, 0.0, now_sec)
-}
-
 /// Removes a band cleanly: sets `used = false`, resets gain/dynamics to 0, and clears solo.
 pub fn delete_band(
     setter: &LiveSetter,
@@ -201,30 +186,5 @@ pub fn build_node_render_data(
         is_soloed,
         filter_name: live.read(&band.filter_type).short_name(),
         target_name: live.read(&band.placement).short_name(),
-    }
-}
-
-pub fn apply_master_events(
-    setter: &LiveSetter,
-    params: &PhantomEqParams,
-    state: &mut EditorState,
-    events: MasterBarEvents,
-) {
-    if events.toggle_phase_invert {
-        let cur = setter.read(&params.phase_invert);
-        setter.set_once(&params.phase_invert, !cur);
-    }
-    if let Some(gain) = events.set_output_gain {
-        setter.set_once(&params.output_gain, gain);
-    }
-    if events.toggle_auto_gain {
-        let cur = setter.read(&params.auto_gain);
-        setter.set_once(&params.auto_gain, !cur);
-    }
-    if let Some(idx) = events.set_character {
-        setter.set_once(&params.character, CharacterModeParam::from_idx(idx));
-    }
-    if let Some(scale) = events.set_scale_db {
-        state.scale_db = scale;
     }
 }

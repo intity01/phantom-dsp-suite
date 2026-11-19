@@ -1,13 +1,14 @@
 //! Pro-Q 4 Mouse & Gesture Handler for the Main EQ Frequency Canvas
-//! - Single-click near the EQ curve (<= 36 px) creates & selects a band on the curve
-//! - Click-and-drag anywhere on empty canvas creates a band & drags it immediately
+//! - Single-click near the EQ curve (<= 28 px) creates & selects a band on the curve
+//! - Single-click away from the EQ curve (> 28 px) deselects & hides the Floating HUD
+//! - Click-and-drag starting near the curve (<= 40 px, travel >= 3.5 px) creates & drags a band
 //! - Double-click anywhere creates a band (and won't reset gain if double-clicking a fresh band)
 //! - Double-click existing band (>= 0.40s old) resets gain to 0 dB; Right-click toggles On/Off
 //! - Spectrum Grab peak click-and-drag, Alt+Drag Solo audition, Ctrl/SNAP semitone snap, Scroll Q
 
 use super::canvas_hit::{
-    curve_hit_db, hit_solo_badge, CLICK_MAX_TRAVEL_PX, DRAG_CREATE_START_PX,
-    FRESH_BAND_DOUBLE_CLICK_SEC,
+    curve_hit_db, curve_hit_db_within, hit_solo_badge, CLICK_MAX_TRAVEL_PX, CURVE_DRAG_HIT_PX,
+    DRAG_CREATE_START_PX, FRESH_BAND_DOUBLE_CLICK_SEC,
 };
 use super::display_helpers::{create_band_at, find_hit_used_node, smart_detect_shape};
 use super::window_size::local_pointer;
@@ -83,33 +84,51 @@ pub fn handle_canvas_gestures(
         return;
     }
 
-    // 2. Empty canvas press: drag >= 2.5px creates & drags anywhere; release < 3px near curve creates
+    // 2. Empty canvas press: near curve creates/drags; away from curve deselects (hides HUD)
     if let Some(press_pos) = state.pending_curve_press {
         if !primary_down {
             state.pending_curve_press = None;
             let rel_pos = interact_pos.unwrap_or(press_pos);
-            if rel_pos.distance(press_pos) < CLICK_MAX_TRAVEL_PX && !response.double_clicked() {
-                if let Some(curve_db) =
-                    curve_hit_db(press_pos, map, active_coeffs, state.sample_rate)
-                {
-                    let freq = resolve_freq(map.x_to_freq(press_pos.x), snap);
-                    let _ = create_band_at(setter, params, state, freq, curve_db, now);
+            if !response.double_clicked() {
+                if rel_pos.distance(press_pos) < CLICK_MAX_TRAVEL_PX {
+                    if let Some(curve_db) =
+                        curve_hit_db(press_pos, map, active_coeffs, state.sample_rate)
+                    {
+                        let freq = resolve_freq(map.x_to_freq(press_pos.x), snap);
+                        let _ = create_band_at(setter, params, state, freq, curve_db, now);
+                    } else {
+                        state.selected_band = None;
+                    }
+                } else if curve_hit_db(press_pos, map, active_coeffs, state.sample_rate).is_none() {
+                    state.selected_band = None;
                 }
             }
         } else if let Some(cur_pos) = pointer_pos {
             if cur_pos.distance(press_pos) >= DRAG_CREATE_START_PX {
                 state.pending_curve_press = None;
-                let freq = resolve_freq(map.x_to_freq(cur_pos.x), snap);
-                let gain = map.y_to_db(cur_pos.y).clamp(-30.0, 30.0);
-                if let Some(new_idx) = create_band_at(setter, params, state, freq, gain, now) {
-                    let band = &params.bands[new_idx];
-                    state.dragging_band = Some(new_idx);
-                    state.drag_created_band = Some(new_idx);
-                    setter.begin_set_parameter(&band.frequency);
-                    setter.begin_set_parameter(&band.gain);
-                    if alt_down {
-                        state.alt_solo_band = Some(new_idx);
+                let near_curve = curve_hit_db_within(
+                    press_pos,
+                    map,
+                    active_coeffs,
+                    state.sample_rate,
+                    CURVE_DRAG_HIT_PX,
+                )
+                .is_some();
+                if near_curve {
+                    let freq = resolve_freq(map.x_to_freq(cur_pos.x), snap);
+                    let gain = map.y_to_db(cur_pos.y).clamp(-30.0, 30.0);
+                    if let Some(new_idx) = create_band_at(setter, params, state, freq, gain, now) {
+                        let band = &params.bands[new_idx];
+                        state.dragging_band = Some(new_idx);
+                        state.drag_created_band = Some(new_idx);
+                        setter.begin_set_parameter(&band.frequency);
+                        setter.begin_set_parameter(&band.gain);
+                        if alt_down {
+                            state.alt_solo_band = Some(new_idx);
+                        }
                     }
+                } else {
+                    state.selected_band = None;
                 }
             }
         }
@@ -154,8 +173,11 @@ pub fn handle_canvas_gestures(
                 setter.set_once(&band.enabled, !en);
             }
         }
-    } else if primary_pressed && state.dragging_band.is_none() {
-        // 5. Primary press: solo badge | existing node | Spectrum Grab peak | any empty canvas spot
+    } else if primary_pressed
+        && state.dragging_band.is_none()
+        && (response.hovered() || response.is_pointer_button_down_on())
+    {
+        // 5. Primary press: solo badge | existing node | Spectrum Grab peak | empty canvas spot
         if let Some(pos) = pointer_pos {
             if hit_solo_badge(pos, soloed_band, node_positions) {
                 state.latched_solo = None;
@@ -179,7 +201,10 @@ pub fn handle_canvas_gestures(
     }
 
     // 6. Scroll wheel adjusts Q of hovered used band (or selected used band)
-    if scroll_delta.abs() > 0.05 && pointer_pos.is_some_and(|p| map.rect.contains(p)) {
+    if scroll_delta.abs() > 0.05
+        && response.hovered()
+        && pointer_pos.is_some_and(|p| map.rect.contains(p))
+    {
         if let Some(q_idx) = hovered_node.or(state.selected_band) {
             if q_idx < NUM_BANDS && setter.read(&params.bands[q_idx].used) {
                 let band = &params.bands[q_idx];

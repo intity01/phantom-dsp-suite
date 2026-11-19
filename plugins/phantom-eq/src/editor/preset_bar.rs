@@ -53,7 +53,7 @@ pub fn draw_preset_bar(
 
     let mut chosen_idx: Option<usize> = None;
     egui::ComboBox::from_id_salt("phantom_eq_preset_selector")
-        .width(155.0)
+        .width(165.0)
         .selected_text(
             RichText::new(display_title)
                 .font(FontId::proportional(10.0))
@@ -219,5 +219,10 @@ pub fn sync_selected_band_after_load(
     live: &LiveParamMirror,
     state: &mut EditorState,
 ) {
-    state.selected_band = (0..NUM_BANDS).find(|&i| live.read(&params.bands[i].used));
+    if state
+        .selected_band
+        .is_some_and(|s| s >= NUM_BANDS || !live.read(&params.bands[s].used))
+    {
+        state.selected_band = None;
+    }
 }

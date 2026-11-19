@@ -1,7 +1,7 @@
 //! Phantom UI Design System & Theme Engine
 //! Sleek Dark Obsidian palette inspired by professional audio workstations.
 
-use nih_plug_egui::egui::{Color32, Visuals};
+use nih_plug_egui::egui::{epaint::Shadow, Color32, Stroke, Visuals};
 
 pub const BG_PANEL: Color32 = Color32::from_rgb(16, 17, 23);
 pub const BG_CARD: Color32 = Color32::from_rgb(22, 24, 32);
@@ -47,6 +47,14 @@ pub fn configure_visuals(ctx: &nih_plug_egui::egui::Context) {
     let mut visuals = Visuals::dark();
     visuals.panel_fill = BG_PANEL;
     visuals.window_fill = BG_PANEL;
+    visuals.window_stroke =
+        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 255, 255, 26));
     visuals.widgets.noninteractive.bg_fill = BG_CARD;
+    visuals.selection.bg_fill = Color32::from_rgb(36, 42, 56);
+    visuals.selection.stroke = Stroke::new(1.0_f32, with_alpha(ACCENT_CYAN, 150));
+    visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(28, 31, 42);
+    visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(38, 43, 58);
+    visuals.widgets.active.bg_fill = Color32::from_rgb(46, 54, 72);
+    visuals.popup_shadow = Shadow::NONE;
     ctx.set_visuals(visuals);
 }

@@ -3,12 +3,13 @@
 //! Lock-Free Live Parameter Mirror (0 ms GUI edits even when Cubase suspends `process()`),
 //! Floating Band HUD Popover, Piano Roll, Spectrum Grab, EQ Match, Collision Detection & Undo/Redo.
 
+mod bottom_bar;
+mod bottom_popovers;
 mod canvas_hit;
 mod display;
 mod display_helpers;
 mod gestures;
 mod header;
-mod header_row2;
 mod inspector;
 mod match_panel;
 mod preset_bar;
@@ -20,13 +21,12 @@ pub use shared::{EditorShared, NO_SOLO};
 use crate::live_mirror::{LiveParamMirror, LiveSetter};
 use crate::params::{PhantomEqParams, NUM_BANDS};
 use crate::state::{factory_presets, load_user_presets, AbHistoryManager, EqPresetSnapshot};
-use display_helpers::{apply_master_events, delete_band};
+use display_helpers::delete_band;
 use nih_plug::prelude::ParamSetter;
 use nih_plug_egui::egui::{self, Key, Pos2, Rect, Vec2};
 use phantom_dsp::{CollisionRegistry, EqMatchEngine, SpectrumProcessor, NUM_DISPLAY_BINS};
 use phantom_ui::{
-    configure_visuals, draw_master_bar, draw_output_meter, MasterBarData, OutputMeterData,
-    BG_PANEL, OUTPUT_METER_WIDTH,
+    configure_visuals, draw_output_meter, OutputMeterData, BG_PANEL, OUTPUT_METER_WIDTH,
 };
 use preset_bar::sync_selected_band_after_load;
 use window_size::{current_preset, show_zoomed_root};
@@ -91,7 +91,7 @@ impl Default for EditorState {
             show_floating_hud: true,
             show_docked_inspector: false,
             last_hud_rect: None,
-            show_piano_roll: true,
+            show_piano_roll: false,
             snap_to_notes: false,
             spectrum_grab_enabled: true,
             show_collisions: false,
@@ -149,12 +149,14 @@ pub fn draw_editor(
     if state
         .selected_band
         .is_some_and(|s| s >= NUM_BANDS || !live.read(&params.bands[s].used))
-        || (state.selected_band.is_none() && state.dragging_band.is_none())
     {
-        state.selected_band = (0..NUM_BANDS).find(|&i| live.read(&params.bands[i].used));
+        state.selected_band = None;
     }
 
     if !ctx.wants_keyboard_input() {
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            state.selected_band = None;
+        }
         if ctx.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace)) {
             if let Some(sel) = state.selected_band {
                 delete_band(&live_setter, params, state, shared, sel);
@@ -207,22 +209,30 @@ pub fn draw_editor(
             ui.add_space(4.0);
 
             let dock_reserve = match (state.show_docked_inspector, state.selected_band) {
-                (false, _) => 44.0,
-                (true, Some(_)) => 148.0,
-                (true, None) => 84.0,
+                (false, _) => 36.0,
+                (true, Some(_)) => 140.0,
+                (true, None) => 76.0,
             };
             let display_h = (ui.available_height() - dock_reserve).max(220.0);
-            let display_w = (ui.available_width() - OUTPUT_METER_WIDTH - 10.0).max(320.0);
+            let display_w = (ui.available_width() - OUTPUT_METER_WIDTH - 12.0).max(320.0);
 
             ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
                 ui.add_space(4.0);
-                display::draw_main_display(
-                    ui,
-                    &live_setter,
-                    state,
-                    params,
-                    shared,
+                ui.allocate_ui_with_layout(
                     Vec2::new(display_w, display_h),
+                    egui::Layout::top_down(egui::Align::LEFT),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+                        display::draw_main_display(
+                            ui,
+                            &live_setter,
+                            state,
+                            params,
+                            shared,
+                            Vec2::new(display_w, display_h),
+                        );
+                    },
                 );
                 ui.add_space(4.0);
                 let meter_data = OutputMeterData {
@@ -242,18 +252,7 @@ pub fn draw_editor(
             }
             ui.add_space(4.0);
 
-            let master_data = MasterBarData {
-                phase_inverted: live.read(&params.phase_invert),
-                output_gain_db: live.read(&params.output_gain),
-                auto_gain: live.read(&params.auto_gain),
-                auto_gain_makeup_db: makeup_db,
-                character_idx: live.read(&params.character).to_idx(),
-                scale_db: state.scale_db,
-                peak_db: meter_snap.peak_l_db.max(meter_snap.peak_r_db),
-                momentary_lufs: meter_snap.momentary_lufs,
-            };
-            let master_events = draw_master_bar(ui, &master_data);
-            apply_master_events(&live_setter, params, state, master_events);
+            bottom_bar::draw_bottom_bar(ui, &live_setter, params, state, shared, makeup_db);
         });
     });
 

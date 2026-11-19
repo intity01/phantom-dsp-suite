@@ -160,20 +160,23 @@ pub fn draw_main_display(
         draw_empty_canvas_hint(&painter, &map);
     }
 
-    // 8. Ghost Preview Node on Hover (when over empty canvas, not on a node/HUD/grab peak)
+    // 8. Ghost Preview Node on Hover (ONLY when hovering within CURVE_CLICK_HIT_PX of EQ curve)
     let hovered_node =
         pointer_pos.and_then(|p| find_hit_used_node(p, &node_positions, state.selected_band));
     let over_prev_hud = state
         .last_hud_rect
         .is_some_and(|r| pointer_pos.is_some_and(|p| r.contains(p)));
-    if state.dragging_band.is_none()
+    if response.hovered()
+        && state.dragging_band.is_none()
         && hovered_node.is_none()
         && hovered_grab_peak.is_none()
         && !over_prev_hud
         && find_first_unused_band(params, live).is_some()
     {
         if let Some(ptr) = pointer_pos.filter(|p| map.rect.contains(*p)) {
-            draw_ghost_node(&painter, ghost_position(ptr, &map, active_slice, sr));
+            if let Some(ghost_pos) = ghost_position(ptr, &map, active_slice, sr) {
+                draw_ghost_node(&painter, ghost_pos);
+            }
         }
     }
 
@@ -220,7 +223,7 @@ pub fn draw_main_display(
             state.selected_band,
             hov_piano_freq,
         );
-        if in_piano && ui.input(|i| i.pointer.primary_pressed()) {
+        if in_piano && response.contains_pointer() && ui.input(|i| i.pointer.primary_pressed()) {
             if let Some(note_freq) = snapped_key {
                 let f = note_freq.clamp(10.0, 30000.0);
                 if let Some(sel) = state

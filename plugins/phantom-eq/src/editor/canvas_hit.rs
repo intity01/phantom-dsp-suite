@@ -10,9 +10,11 @@ use std::f32::consts::TAU;
 use crate::params::NUM_BANDS;
 
 /// A single click within this vertical distance of the combined EQ curve creates a band on it.
-pub const CURVE_CLICK_HIT_PX: f32 = 36.0;
-/// Pointer travel that promotes a canvas press into click-and-drag band creation.
-pub const DRAG_CREATE_START_PX: f32 = 2.5;
+pub const CURVE_CLICK_HIT_PX: f32 = 28.0;
+/// A click-and-drag starting within this vertical distance of the combined EQ curve creates a band.
+pub const CURVE_DRAG_HIT_PX: f32 = 40.0;
+/// Pointer travel that promotes a curve press into click-and-drag band creation.
+pub const DRAG_CREATE_START_PX: f32 = 3.5;
 /// Maximum pointer travel for a press/release to still count as a single click.
 pub const CLICK_MAX_TRAVEL_PX: f32 = 3.0;
 /// A double-click on a band created this recently keeps its gain (it was the first click).
@@ -27,6 +29,19 @@ pub fn curve_db_at(freq_hz: f32, active_coeffs: &[CascadedCoeffs], sample_rate: 
         .sum()
 }
 
+/// Returns the curve gain (dB) under `pos.x` when `pos` lies within `max_dist_px` of the curve.
+pub fn curve_hit_db_within(
+    pos: Pos2,
+    map: &EqCanvasMapping,
+    active_coeffs: &[CascadedCoeffs],
+    sample_rate: f32,
+    max_dist_px: f32,
+) -> Option<f32> {
+    let freq = map.x_to_freq(pos.x);
+    let db = curve_db_at(freq, active_coeffs, sample_rate);
+    ((pos.y - map.db_to_y(db)).abs() <= max_dist_px).then_some(db)
+}
+
 /// Returns the curve gain (dB) under `pos.x` when `pos` lies within [`CURVE_CLICK_HIT_PX`].
 pub fn curve_hit_db(
     pos: Pos2,
@@ -34,9 +49,7 @@ pub fn curve_hit_db(
     active_coeffs: &[CascadedCoeffs],
     sample_rate: f32,
 ) -> Option<f32> {
-    let freq = map.x_to_freq(pos.x);
-    let db = curve_db_at(freq, active_coeffs, sample_rate);
-    ((pos.y - map.db_to_y(db)).abs() <= CURVE_CLICK_HIT_PX).then_some(db)
+    curve_hit_db_within(pos, map, active_coeffs, sample_rate, CURVE_CLICK_HIT_PX)
 }
 
 pub fn hit_solo_badge(
@@ -54,17 +67,15 @@ pub fn hit_solo_badge(
     pos.distance(badge_pos) <= SOLO_BADGE_RADIUS + 2.5
 }
 
-/// Where a click at `pointer` would create a band: snapped onto the curve when close to it.
+/// Where a click at `pointer` would create a band on the curve, or `None` when away from it.
 pub fn ghost_position(
     pointer: Pos2,
     map: &EqCanvasMapping,
     active_coeffs: &[CascadedCoeffs],
     sample_rate: f32,
-) -> Pos2 {
-    match curve_hit_db(pointer, map, active_coeffs, sample_rate) {
-        Some(db) => Pos2::new(pointer.x, map.db_to_y(db)),
-        None => pointer,
-    }
+) -> Option<Pos2> {
+    curve_hit_db(pointer, map, active_coeffs, sample_rate)
+        .map(|db| Pos2::new(pointer.x, map.db_to_y(db)))
 }
 
 /// Subtle dashed translucent cyan circle with a faint `+`: "click here to create a band".
@@ -96,4 +107,42 @@ fn egui_x(v: f32) -> nih_plug_egui::egui::Vec2 {
 #[inline]
 fn egui_y(v: f32) -> nih_plug_egui::egui::Vec2 {
     nih_plug_egui::egui::vec2(0.0, v)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::EditorState;
+    use nih_plug_egui::egui::Rect;
+
+    #[test]
+    fn curve_hit_thresholds_and_ghost_visibility() {
+        let map = EqCanvasMapping::with_db_range(
+            Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(800.0, 400.0)),
+            12.0,
+        );
+        let y0 = map.db_to_y(0.0); // 200.0
+
+        // Within CURVE_CLICK_HIT_PX (28 px): ghost snaps to curve
+        let near = Pos2::new(400.0, y0 + 20.0);
+        let ghost = ghost_position(near, &map, &[], 48000.0).expect("ghost expected near curve");
+        assert!((ghost.y - y0).abs() < 1e-3);
+
+        // Between 28 px and 40 px: no click-ghost, but drag-hit succeeds
+        let mid = Pos2::new(400.0, y0 + 35.0);
+        assert!(ghost_position(mid, &map, &[], 48000.0).is_none());
+        assert!(curve_hit_db_within(mid, &map, &[], 48000.0, CURVE_DRAG_HIT_PX).is_some());
+
+        // Far from curve (> 40 px): neither click nor drag creates a band
+        let far = Pos2::new(400.0, y0 + 60.0);
+        assert!(ghost_position(far, &map, &[], 48000.0).is_none());
+        assert!(curve_hit_db_within(far, &map, &[], 48000.0, CURVE_DRAG_HIT_PX).is_none());
+    }
+
+    #[test]
+    fn editor_default_starts_clean_without_piano_roll_or_hud() {
+        let state = EditorState::default();
+        assert!(!state.show_piano_roll);
+        assert!(state.selected_band.is_none());
+    }
 }

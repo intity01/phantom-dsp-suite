@@ -1,5 +1,5 @@
 //! Pro-Q 4 Floating Band Popover HUD
-//! Compact dark-glass floating card (`296 x 116 px`) positioned automatically near the selected
+//! Compact dark-glass floating card (`296 x 98/114 px`) positioned automatically near the selected
 //! EQ node with 4 precision Rotary Knobs, Headphone Solo Audition, Shape/Slope/Routing pills,
 //! Spectral Dynamics (`SPEC`) toggle, and Dynamic EQ ballistics micro-strip.
 
@@ -13,12 +13,21 @@ use crate::widgets::inspector_controls::{
     delete_band_button, draw_hud_pill, power_button, solo_headphones_button,
 };
 use nih_plug_egui::egui::{
-    Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder,
-    Vec2,
+    Align, Align2, Color32, CornerRadius, FontId, Layout, Pos2, Rect, Sense, Stroke, StrokeKind,
+    Ui, UiBuilder, Vec2,
 };
 
 pub const FLOATING_HUD_WIDTH: f32 = 296.0;
-pub const FLOATING_HUD_HEIGHT: f32 = 116.0;
+pub const FLOATING_HUD_HEIGHT: f32 = 98.0;
+const HUD_NODE_GAP_PX: f32 = 20.0;
+
+#[inline]
+fn add_center_pad(ui: &mut Ui, content_w: f32) {
+    let pad = ((ui.available_width() - content_w) * 0.5).max(0.0);
+    if pad > 0.0 {
+        ui.add_space(pad);
+    }
+}
 
 fn cycle_pill(ui: &mut Ui, w: f32, txt: &str, col: Color32, idx: (usize, usize)) -> Option<usize> {
     let n = idx.1.max(1);
@@ -36,18 +45,17 @@ fn draw_top_strip(
     ui: &mut Ui,
     data: &BandInspectorData,
     accent: Color32,
-    filter_names: &[&'static str],
-    slope_names: &[&'static str],
-    routing_names: &[&'static str],
+    names: (&[&'static str], &[&'static str], &[&'static str]),
     events: &mut BandInspectorEvents,
 ) {
+    let (filter_names, slope_names, routing_names) = names;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 3.0;
+        add_center_pad(ui, 275.0);
 
         if power_button(ui, data.is_enabled, accent).clicked() {
             events.toggle_enabled = true;
         }
-
         let badge = format!("B{}", data.selected_idx + 1);
         if draw_hud_pill(ui, 24.0, 22.0, &badge, true, accent).clicked()
             && data.used_bands_mask != 0
@@ -56,7 +64,6 @@ fn draw_top_strip(
                 .map(|off| (data.selected_idx + off) % data.num_bands)
                 .find(|&c| (data.used_bands_mask & (1u32 << c)) != 0);
         }
-
         let solo_res = solo_headphones_button(ui, data.is_soloed);
         events.solo_held = solo_res.is_pointer_button_down_on();
         if solo_res.clicked() {
@@ -71,14 +78,15 @@ fn draw_top_strip(
         let (sh_rect, sh_res) = ui.allocate_exact_size(Vec2::new(62.0, 22.0), Sense::click());
         let p = ui.painter();
         let sh_a = if sh_res.hovered() { 24 } else { 12 };
+        let r4 = CornerRadius::same(4);
         p.rect_filled(
             sh_rect,
-            CornerRadius::same(4),
+            r4,
             Color32::from_rgba_unmultiplied(255, 255, 255, sh_a),
         );
         p.rect_stroke(
             sh_rect,
-            CornerRadius::same(4),
+            r4,
             Stroke::new(1.0_f32, with_alpha(accent, 110)),
             StrokeKind::Inside,
         );
@@ -133,7 +141,6 @@ fn draw_top_strip(
         if draw_hud_pill(ui, 33.0, 22.0, "SPEC", data.spectral_enabled, ACCENT_PURPLE).clicked() {
             events.toggle_spectral = true;
         }
-
         if delete_band_button(ui).clicked() {
             events.delete_band = true;
         }
@@ -153,21 +160,23 @@ pub fn draw_floating_band_hud(
 ) -> (BandInspectorEvents, Rect) {
     let mut events = BandInspectorEvents::default();
     let accent = band_color(data.selected_idx);
+    let has_dyn = data.dyn_range.abs() > 0.05;
+    let hud_h = if has_dyn { 114.0 } else { FLOATING_HUD_HEIGHT };
 
     let min_x = map.rect.min.x + 8.0;
-    let hud_x =
-        (node_pos.x - FLOATING_HUD_WIDTH * 0.5).clamp(min_x, (map.rect.max.x - 304.0).max(min_x));
-    let below = (node_pos.y - 135.0) < map.rect.min.y;
-    let raw_y = if below {
-        node_pos.y + 18.0
-    } else {
-        node_pos.y - FLOATING_HUD_HEIGHT - 16.0
-    };
+    let max_x = (map.rect.max.x - FLOATING_HUD_WIDTH - 8.0).max(min_x);
+    let hud_x = (node_pos.x - FLOATING_HUD_WIDTH * 0.5).clamp(min_x, max_x);
     let min_y = map.rect.min.y + 6.0;
-    let max_y = (map.rect.max.y - FLOATING_HUD_HEIGHT - 6.0).max(min_y);
+    let max_y = (map.rect.max.y - hud_h - 6.0).max(min_y);
+    let below = (node_pos.y - hud_h - HUD_NODE_GAP_PX) < min_y;
+    let raw_y = if below {
+        node_pos.y + HUD_NODE_GAP_PX
+    } else {
+        node_pos.y - hud_h - HUD_NODE_GAP_PX
+    };
     let hud_rect = Rect::from_min_size(
         Pos2::new(hud_x, raw_y.clamp(min_y, max_y)),
-        Vec2::new(FLOATING_HUD_WIDTH, FLOATING_HUD_HEIGHT),
+        Vec2::new(FLOATING_HUD_WIDTH, hud_h),
     );
 
     let p = ui.painter();
@@ -179,45 +188,49 @@ pub fn draw_floating_band_hud(
     let ax = node_pos
         .x
         .clamp(hud_rect.min.x + 16.0, hud_rect.max.x - 16.0);
+    let r8 = CornerRadius::same(8);
     p.line_segment(
         [node_pos, Pos2::new(ax, ay)],
         Stroke::new(1.2_f32, with_alpha(accent, 95)),
     );
     p.rect_filled(
         hud_rect.translate(Vec2::new(0.0, 3.0)),
-        CornerRadius::same(8),
+        r8,
         Color32::from_rgba_unmultiplied(0, 0, 0, 135),
     );
     p.rect_filled(
         hud_rect,
-        CornerRadius::same(8),
+        r8,
         Color32::from_rgba_unmultiplied(18, 20, 29, 244),
     );
     p.rect_stroke(
         hud_rect,
-        CornerRadius::same(8),
+        r8,
         Stroke::new(1.2_f32, with_alpha(accent, 185)),
         StrokeKind::Inside,
     );
 
     let inner = hud_rect.shrink2(Vec2::new(6.0, 4.0));
-    ui.scope_builder(UiBuilder::new().max_rect(inner), |ui| {
-        draw_top_strip(
-            ui,
-            data,
-            accent,
-            filter_names,
-            slope_names,
-            routing_names,
-            &mut events,
-        );
-        ui.add_space(1.5);
-        draw_hud_knobs_row(ui, data, accent, &mut events);
-        if data.dyn_range.abs() > 0.05 {
-            ui.add_space(1.0);
-            draw_dyn_micro_strip(ui, data, &mut events);
-        }
-    });
+    let mut child = ui.new_child(
+        UiBuilder::new()
+            .max_rect(inner)
+            .layout(Layout::top_down(Align::LEFT)),
+    );
+    child.set_clip_rect(hud_rect);
+    child.spacing_mut().item_spacing.y = 2.0;
+    draw_top_strip(
+        &mut child,
+        data,
+        accent,
+        (filter_names, slope_names, routing_names),
+        &mut events,
+    );
+    child.add_space(3.0);
+    draw_hud_knobs_row(&mut child, data, accent, &mut events);
+    if has_dyn {
+        child.add_space(1.0);
+        draw_dyn_micro_strip(&mut child, data, &mut events);
+    }
 
     (events, hud_rect)
 }
@@ -231,18 +244,14 @@ fn mini_drag(ui: &mut Ui, w: f32, txt: &str, v: f32, b: (f32, f32, f32), en: boo
     let (rect, res) = ui.allocate_exact_size(Vec2::new(w, 16.0), sense);
     let act = en && (res.dragged() || res.hovered());
     let p = ui.painter();
+    let r3 = CornerRadius::same(3);
     p.rect_filled(
         rect,
-        CornerRadius::same(3),
+        r3,
         Color32::from_rgba_unmultiplied(255, 255, 255, if act { 20 } else { 9 }),
     );
     let brd = Color32::from_rgba_unmultiplied(255, 255, 255, if act { 55 } else { 20 });
-    p.rect_stroke(
-        rect,
-        CornerRadius::same(3),
-        Stroke::new(1.0_f32, brd),
-        StrokeKind::Inside,
-    );
+    p.rect_stroke(rect, r3, Stroke::new(1.0_f32, brd), StrokeKind::Inside);
     let fg = if !en {
         TEXT_DIMMED
     } else if res.dragged() {
@@ -264,6 +273,7 @@ fn mini_drag(ui: &mut Ui, w: f32, txt: &str, v: f32, b: (f32, f32, f32), en: boo
 fn draw_dyn_micro_strip(ui: &mut Ui, d: &BandInspectorData, ev: &mut BandInspectorEvents) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 3.5;
+        add_center_pad(ui, 244.0);
         if draw_hud_pill(ui, 36.0, 16.0, "AUTO", d.dyn_auto_thresh, ACCENT_CYAN).clicked() {
             ev.toggle_dyn_auto_thresh = true;
         }

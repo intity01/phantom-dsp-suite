@@ -35,6 +35,7 @@ pub use views::spectrum_view::{
 pub use widgets::band_inspector::{
     draw_band_inspector, draw_empty_band_inspector, BandInspectorData, BandInspectorEvents,
 };
+pub use widgets::inspector_controls::{draw_icon_button, parse_audio_number};
 pub use widgets::master_bar::{draw_master_bar, MasterBarData, MasterBarEvents};
 pub use widgets::output_meter::{draw_output_meter, OutputMeterData, OUTPUT_METER_WIDTH};
 pub use widgets::rotary_knob::{

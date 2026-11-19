@@ -171,11 +171,17 @@ pub fn draw_hud_knobs_row(
     events: &mut BandInspectorEvents,
 ) {
     let has_dyn = data.dyn_range.abs() > 0.05;
-    let diam = if has_dyn { 30.0 } else { 36.0 };
+    let diam: f32 = if has_dyn { 30.0 } else { 36.0 };
     let idx = data.selected_idx;
 
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.spacing_mut().item_spacing.x = 6.0;
+        let knob_w = (diam + 26.0).max(58.0);
+        let row_w = 4.0 * knob_w + 3.0 * 6.0;
+        let pad = ((ui.available_width() - row_w) * 0.5).max(0.0);
+        if pad > 0.0 {
+            ui.add_space(pad);
+        }
         let f_txt = if data.freq >= 1000.0 {
             format!("{:.2} kHz", data.freq / 1000.0)
         } else {
