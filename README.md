@@ -49,37 +49,37 @@ flowchart TD
 | ------------------------ | ------------------- | ------------------------------------------------------------------------------- |
 | `crates/phantom-dsp`     | Library (`rlib`)    | Pure audio DSP algorithms — zero UI or host dependencies, fully unit-tested     |
 | `crates/phantom-ui`      | Library (`rlib`)    | Shared Dark Obsidian (`#101117` / `#38BDF8`) widgets, icons, and spectrum views |
-| `plugins/phantom-eq`     | `cdylib` + `rlib`   | Flagship 8-band dynamic parametric equalizer exporting VST3 and CLAP            |
+| `plugins/phantom-eq`     | `cdylib` + `rlib`   | Flagship 24-band dynamic parametric equalizer exporting VST3 and CLAP           |
 | `apps/phantom-launcher`  | Binary (`bin`)      | Cross-platform offline plugin hub & headless CLI installer with SHA-256 checks  |
 
 ---
 
 ## Flagship Plugin: Phantom EQ
 
-**Phantom EQ** (`v0.1.0`) is a clean-room 8-band dynamic parametric equalizer engineered for surgical mixing and transparent mastering:
+**Phantom EQ** (`v0.1.0`) is a clean-room 24-band dynamic & spectral parametric equalizer engineered for surgical mixing and transparent mastering:
 
-- **8 Fully Parametric Bands** — Bell (Peaking), Low Cut (High Pass), High Cut (Low Pass), Low Shelf, High Shelf, Notch, and Band Pass filters built on Transposed Direct Form II RBJ biquads (>100M samples/sec throughput).
-- **Dual Processing Engine**:
+- **24 Fully Parametric Bands (Clean Pro-Q 4 Empty Startup)** — 10 filter shapes (Bell, Low Cut, High Cut, Low Shelf, High Shelf, Notch, Band Pass, Tilt Shelf, Flat Tilt, All-Pass) and 8 cascaded slopes (`6` to `96 dB/oct` + `Brickwall`) built on Transposed Direct Form II RBJ biquads.
+- **Triple Processing Engine**:
   - **Zero Latency (Analog IIR)** — Instantaneous 0-sample latency for tracking and live mixing.
+  - **Natural Phase (Analog-Matched IIR + 2x/4x Polyphase Oversampling)** — Zero-latency Vicanek/Orfanidis Nyquist magnitude/phase matching with optional 2x/4x polyphase half-band IIR oversampling.
   - **Linear Phase (Mastering FIR)** — 4095-tap odd Type-I symmetric Kaiser (β=7.5) FIR kernel inside an 8192-point zero-padded Overlap-Save FFT convolution engine (`HOP_SIZE = 1024`), exact buffer-size-invariant **3071-sample** latency (~64.0 ms @ 48 kHz) reported dynamically to the DAW via NIH-plug `set_latency_samples`, C1 raised-cosine click-free kernel crossfading, and zero heap allocations proven under test.
-- **Per-Band Stereo / Mid-Side / Left-Right Routing** — Sculpt Stereo, Mid, Side, Left, or Right independently per band in both Zero Latency and Linear Phase modes (using an exact 2×2 frequency-domain transfer matrix in Linear Phase).
-- **Dynamic EQ** — Per-band sidechain envelope detection for frequency-dependent expansion and attenuation.
-- **2x Anti-Cramping Oversampling** — Eliminates high-frequency Nyquist cramping on analog IIR curves.
-- **Real-Time FFT Spectrum Analyzer** — Lock-free audio-to-UI spectrum bridge for smooth high-FPS visualization.
-- **Pro-Grade Dark Obsidian Interface**:
-  - Header segmented `ZERO LATENCY` / `LINEAR PHASE` toggle with live latency readout (`samples / ms`) and clickable `SOLO B#` indicator pill.
-  - Selected-band isolated frequency curve overlay with band-colored gradient mesh fill beneath the master combined EQ curve.
-  - Per-band **Solo (Audition)** monitor respecting Stereo/L/R/M/S placement with glowing amber node feedback.
-  - Fast canvas ergonomics: double-click node to reset gain to `0.0 dB`, double-click empty canvas to activate/move a band at cursor frequency/gain, right-click node to toggle bypass, scroll wheel to adjust Q.
+- **Per-Band Stereo / Mid-Side / Left-Right Routing** — Sculpt Stereo, Mid, Side, Left, or Right independently per band in Zero Latency, Natural Phase, and Linear Phase modes.
+- **Advanced Dynamic EQ & Per-Band Spectral Dynamics** — Configurable Attack/Release ballistics, Auto-Threshold, External Sidechain support, soft-knee compression/expansion, live gain-reduction telemetry rings, and zero-latency 9-subband **Spectral Dynamics** selective resonance suppression.
+- **EQ Match, Spectrum Grab & Multi-Instance Collision Detection** — Reference vs. track 1/3-octave delta curve fitting (`EqMatchEngine` up to 12 parametric bands), interactive **Spectrum Grab** peak handles, and lock-free 16-slot **Multi-Instance Collision Registry** highlighting cross-track masking in real time.
+- **Character Saturation, Auto-Gain & EBU R128 LUFS Metering** — Subtle/Warm analog harmonic saturation, gated RMS Auto-Gain compensation, and ITU-R BS.1770-4 K-weighted Momentary & Short-Term LUFS + True Peak hold meters.
+- **Pro-Q 4+ Flagship Dark Obsidian Interface**:
+  - **Floating Band Popover HUD & Precision Rotary Knobs** — On-canvas floating HUD anchored to the selected node with 4 custom rotary knobs (`FREQ`, `GAIN`, `Q`, `DYN`), Lucide vector filter shape icons, slope/routing pills, Spectral Dynamics toggle, Headphone Solo audition, and `[HUD / DOCK]` layout switch.
+  - **Resizable Window, Piano Roll & Musical Note Snap** — Drag-resizable window (`860×500` min, `1100×640` default), interactive 20px `C1..C8` Piano Roll bar with live note + cents readout, and semitone note snapping (`[SNAP]` or `Ctrl`-drag).
+  - **Preset Browser, A/B Compare & 64-Step Undo/Redo** — 12 built-in Factory Presets + offline `.peq` User Presets, `<` / `>` quick stepping, `[A / B]` comparison slots with `[Copy]`, and 64-step Undo/Redo (`Ctrl+Z` / `Ctrl+Y`).
 - **100% Offline & Zero Telemetry** — Zero networking crates linked into the plugin binary.
 
 ---
 
 ## Suite Roadmap
 
-| Plugin              | Category    | Status      | Formats     | Highlights                                                              |
-| ------------------- | ----------- | ----------- | ----------- | ----------------------------------------------------------------------- |
-| **Phantom EQ**      | Equalizer   | **Ready**   | VST3 / CLAP | 8-band Dynamic EQ, Linear Phase FIR, M/S, 2x Oversampling, Real-Time FFT |
+| Plugin              | Category    | Status      | Formats     | Highlights                                                                                       |
+| ------------------- | ----------- | ----------- | ----------- | ------------------------------------------------------------------------------------------------ |
+| **Phantom EQ**      | Equalizer   | **Ready**   | VST3 / CLAP | 24-band Dynamic & Spectral EQ, Natural/Linear Phase, EQ Match, Floating HUD, LUFS, Presets & A/B |
 | **Phantom Comp**    | Dynamics    | Planned     | VST3 / CLAP | Mastering & bus compressor with visual transfer curve & sidechain filter |
 | **Phantom Limiter** | Mastering   | Planned     | VST3 / CLAP | True Peak brickwall mastering limiter with EBU R128 loudness metering   |
 | **Phantom MB**      | Multiband   | Planned     | VST3 / CLAP | Linear-phase multiband dynamic processor with per-band soloing          |

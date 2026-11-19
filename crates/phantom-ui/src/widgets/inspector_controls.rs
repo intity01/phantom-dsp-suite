@@ -4,10 +4,10 @@
 use crate::icons::{
     draw_close_icon, draw_filter_shape_icon, draw_headphones_icon, draw_power_icon,
 };
-use crate::theme::{with_alpha, ACCENT_AMBER, ACCENT_RED, TEXT_DIMMED, TEXT_MUTED};
+use crate::theme::{with_alpha, ACCENT_AMBER, ACCENT_RED, TEXT_BRIGHT, TEXT_DIMMED, TEXT_MUTED};
 use nih_plug_egui::egui::{
-    self, Color32, CornerRadius, FontId, Response, RichText, Sense, Slider, Stroke, StrokeKind, Ui,
-    Vec2,
+    self, Align2, Color32, CornerRadius, FontId, Response, RichText, Sense, Slider, Stroke,
+    StrokeKind, Ui, Vec2,
 };
 
 /// Draws a sleek square vector icon button with active tint and hover feedback.
@@ -232,4 +232,50 @@ pub fn draw_live_gr_pill(ui: &mut Ui, live_gr_db: f32) {
             .font(FontId::proportional(10.0))
             .color(col),
     );
+}
+
+/// Draws a compact HUD pill button with active tint and hover highlight.
+pub fn draw_hud_pill(
+    ui: &mut Ui,
+    w: f32,
+    h: f32,
+    text: &str,
+    active: bool,
+    accent: Color32,
+) -> Response {
+    let (rect, res) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
+    let hov = res.hovered();
+    let bg = if active {
+        with_alpha(accent, 48)
+    } else {
+        Color32::from_rgba_unmultiplied(255, 255, 255, if hov { 24 } else { 11 })
+    };
+    let border = if active || hov {
+        with_alpha(accent, if active { 180 } else { 110 })
+    } else {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 26)
+    };
+    let fg = if active {
+        accent
+    } else if hov {
+        TEXT_BRIGHT
+    } else {
+        TEXT_MUTED
+    };
+    let p = ui.painter();
+    p.rect_filled(rect, CornerRadius::same(4), bg);
+    p.rect_stroke(
+        rect,
+        CornerRadius::same(4),
+        Stroke::new(1.0_f32, border),
+        StrokeKind::Inside,
+    );
+    p.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        text,
+        FontId::proportional(9.0),
+        fg,
+    );
+    res
 }

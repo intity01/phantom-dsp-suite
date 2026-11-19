@@ -48,7 +48,7 @@ pub struct PhantomEqParams {
 impl Default for PhantomEqParams {
     fn default() -> Self {
         Self {
-            editor_state: EguiState::from_size(1060, 620),
+            editor_state: EguiState::from_size(1100, 640),
             mode: EnumParam::new("Processing Mode", ProcessingModeParam::ZeroLatency),
             oversampling: EnumParam::new("Oversampling", OversamplingParam::X2),
             character: EnumParam::new("Character", CharacterModeParam::Clean),

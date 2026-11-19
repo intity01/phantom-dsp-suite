@@ -135,3 +135,82 @@ pub fn draw_spectrum(painter: &Painter, map: &EqCanvasMapping, bins_db: &[f32]) 
         Color32::from_rgba_unmultiplied(56, 189, 248, 108),
     );
 }
+
+/// Renders a crisp amber/gold dashed spectrum contour for the EQ Match reference trace.
+pub fn draw_reference_spectrum_overlay(
+    painter: &Painter,
+    map: &EqCanvasMapping,
+    ref_bins_db: &[f32],
+) {
+    let points = bins_to_points(map, ref_bins_db);
+    if points.len() < 2 {
+        return;
+    }
+    let glow_stroke = Stroke::new(3.0_f32, Color32::from_rgba_unmultiplied(245, 158, 11, 34));
+    let dash_stroke = Stroke::new(1.5_f32, Color32::from_rgba_unmultiplied(251, 191, 36, 195));
+
+    // Draw every other segment as a crisp dashed contour
+    for (idx, w) in points.windows(2).enumerate() {
+        if idx % 2 == 0 {
+            painter.line_segment([w[0], w[1]], glow_stroke);
+            painter.line_segment([w[0], w[1]], dash_stroke);
+        }
+    }
+}
+
+/// Renders soft translucent crimson/amber glow columns where `collision_intensity[i] > 0.05`,
+/// highlighting multi-track frequency masking regions across the spectrum.
+pub fn draw_collision_overlay(
+    painter: &Painter,
+    map: &EqCanvasMapping,
+    post_bins_db: &[f32],
+    collision_intensity: &[f32],
+) {
+    let n = post_bins_db.len().min(collision_intensity.len());
+    if n < 2 {
+        return;
+    }
+    let points = bins_to_points(map, &post_bins_db[..n]);
+    let bottom_y = map.rect.max.y;
+    let mut mesh = Mesh::default();
+
+    for i in 0..(n - 1) {
+        let c0 = collision_intensity[i].clamp(0.0, 1.0);
+        let c1 = collision_intensity[i + 1].clamp(0.0, 1.0);
+        if c0 <= 0.05 && c1 <= 0.05 {
+            continue;
+        }
+        let col_for = |c: f32| -> Color32 {
+            if c <= 0.05 {
+                Color32::TRANSPARENT
+            } else {
+                let a = (c * 115.0).round().clamp(8.0, 125.0) as u8;
+                let g = (140.0 * (1.0 - c * 0.7)).round() as u8;
+                Color32::from_rgba_unmultiplied(244, g, 68, a)
+            }
+        };
+        let top0 = col_for(c0);
+        let top1 = col_for(c1);
+        let idx = mesh.vertices.len() as u32;
+        mesh.colored_vertex(points[i], top0);
+        mesh.colored_vertex(Pos2::new(points[i].x, bottom_y), Color32::TRANSPARENT);
+        mesh.colored_vertex(points[i + 1], top1);
+        mesh.colored_vertex(Pos2::new(points[i + 1].x, bottom_y), Color32::TRANSPARENT);
+        mesh.add_triangle(idx, idx + 1, idx + 2);
+        mesh.add_triangle(idx + 1, idx + 3, idx + 2);
+
+        let avg_c = 0.5 * (c0 + c1);
+        let line_a = (avg_c * 210.0).round().clamp(30.0, 220.0) as u8;
+        painter.line_segment(
+            [points[i], points[i + 1]],
+            Stroke::new(
+                2.0_f32,
+                Color32::from_rgba_unmultiplied(248, 113, 113, line_a),
+            ),
+        );
+    }
+
+    if !mesh.indices.is_empty() {
+        painter.add(Shape::mesh(mesh));
+    }
+}

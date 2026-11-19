@@ -3,13 +3,13 @@
 
 use super::{EditorShared, EditorState};
 use crate::params::{
-    BandParams, ChannelPlacementParam, FilterSlopeParam, FilterTypeParam, PhantomEqParams,
-    NUM_BANDS,
+    BandParams, ChannelPlacementParam, CharacterModeParam, FilterSlopeParam, FilterTypeParam,
+    PhantomEqParams, NUM_BANDS,
 };
 use nih_plug::prelude::ParamSetter;
 use nih_plug_egui::egui::Pos2;
 use phantom_dsp::CascadedCoeffs;
-use phantom_ui::NodeRenderData;
+use phantom_ui::{MasterBarEvents, NodeRenderData};
 use std::f32::consts::FRAC_1_SQRT_2;
 
 pub const NODE_HIT_RADIUS: f32 = 15.0;
@@ -141,6 +141,10 @@ pub fn create_band_at(
     setter.set_parameter(&band.dynamic_range, 0.0);
     setter.end_set_parameter(&band.dynamic_range);
 
+    setter.begin_set_parameter(&band.spectral_dynamics);
+    setter.set_parameter(&band.spectral_dynamics, false);
+    setter.end_set_parameter(&band.spectral_dynamics);
+
     state.selected_band = Some(idx);
     Some(idx)
 }
@@ -176,6 +180,10 @@ pub fn delete_band(
     setter.begin_set_parameter(&band.dynamic_range);
     setter.set_parameter(&band.dynamic_range, 0.0);
     setter.end_set_parameter(&band.dynamic_range);
+
+    setter.begin_set_parameter(&band.spectral_dynamics);
+    setter.set_parameter(&band.spectral_dynamics, false);
+    setter.end_set_parameter(&band.spectral_dynamics);
 
     if state.latched_solo == Some(idx) {
         state.latched_solo = None;
@@ -213,5 +221,36 @@ pub fn build_node_render_data(
         is_soloed,
         filter_name: band.filter_type.value().short_name(),
         target_name: band.placement.value().short_name(),
+    }
+}
+
+pub fn apply_master_events(
+    setter: &ParamSetter,
+    params: &PhantomEqParams,
+    state: &mut EditorState,
+    events: MasterBarEvents,
+) {
+    if events.toggle_phase_invert {
+        setter.begin_set_parameter(&params.phase_invert);
+        setter.set_parameter(&params.phase_invert, !params.phase_invert.value());
+        setter.end_set_parameter(&params.phase_invert);
+    }
+    if let Some(gain) = events.set_output_gain {
+        setter.begin_set_parameter(&params.output_gain);
+        setter.set_parameter(&params.output_gain, gain);
+        setter.end_set_parameter(&params.output_gain);
+    }
+    if events.toggle_auto_gain {
+        setter.begin_set_parameter(&params.auto_gain);
+        setter.set_parameter(&params.auto_gain, !params.auto_gain.value());
+        setter.end_set_parameter(&params.auto_gain);
+    }
+    if let Some(idx) = events.set_character {
+        setter.begin_set_parameter(&params.character);
+        setter.set_parameter(&params.character, CharacterModeParam::from_idx(idx));
+        setter.end_set_parameter(&params.character);
+    }
+    if let Some(scale) = events.set_scale_db {
+        state.scale_db = scale;
     }
 }

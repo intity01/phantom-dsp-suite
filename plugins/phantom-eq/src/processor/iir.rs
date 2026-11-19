@@ -1,11 +1,11 @@
-//! Zero-Latency & Natural-Phase IIR Processing Core (with 2x/4x Polyphase OS + Dynamic EQ)
+//! Zero-Latency & Natural-Phase IIR Processing Core (with 2x/4x Polyphase OS + Dynamic & Spectral EQ)
 //! Strictly zero heap allocations: all active band metadata lives in fixed stack arrays.
 
-use crate::dsp_state::{process_cascaded_placement, SharedBandGr};
+use crate::dsp_state::{process_cascaded_placement, process_spectral_placement, SharedBandGr};
 use crate::params::{PhantomEqParams, NUM_BANDS};
 use phantom_dsp::{
     CascadedCoeffs, CascadedStereoFilter, ChannelTarget, DynamicDetector, FilterSlope, FilterType,
-    OversampleFactor, Oversampler2x, Oversampler4x,
+    OversampleFactor, Oversampler2x, Oversampler4x, SpectralBandProcessor,
 };
 
 #[derive(Clone, Copy)]
@@ -22,6 +22,7 @@ pub struct ActiveBand {
     pub dyn_auto: bool,
     pub dyn_ext_sc: bool,
     pub has_dynamics: bool,
+    pub spectral_dyn: bool,
     pub last_applied_dyn: f32,
 }
 
@@ -40,6 +41,7 @@ impl Default for ActiveBand {
             dyn_auto: true,
             dyn_ext_sc: false,
             has_dynamics: false,
+            spectral_dyn: false,
             last_applied_dyn: 0.0,
         }
     }
@@ -50,6 +52,7 @@ pub fn prepare_iir_bands(
     params: &PhantomEqParams,
     filters: &mut [CascadedStereoFilter; NUM_BANDS],
     detectors: &mut [DynamicDetector; NUM_BANDS],
+    spectral: &mut [SpectralBandProcessor; NUM_BANDS],
     shared_gr: &SharedBandGr,
     effective_sr: f32,
     natural_phase: bool,
@@ -70,12 +73,17 @@ pub fn prepare_iir_bands(
         let q = band.q.value();
         let dyn_range = band.dynamic_range.value();
         let has_dynamics = dyn_range.abs() > 0.01;
+        let spectral_dyn = band.spectral_dynamics.value() && dyn_range.abs() > 0.05;
 
         let coeffs =
             CascadedCoeffs::calculate(ftype, slope, effective_sr, freq, gain, q, natural_phase);
         filters[i].set_coeffs(&coeffs);
 
-        if has_dynamics {
+        if spectral_dyn {
+            let att = band.dynamic_attack.value();
+            let rel = band.dynamic_release.value();
+            spectral[i].set_ballistics(effective_sr, att, rel);
+        } else if has_dynamics {
             let att = band.dynamic_attack.value();
             let rel = band.dynamic_release.value();
             detectors[i].update_ballistics(effective_sr, att, rel);
@@ -97,6 +105,7 @@ pub fn prepare_iir_bands(
             dyn_auto: band.dynamic_auto_thresh.value(),
             dyn_ext_sc: band.dynamic_ext_sc.value(),
             has_dynamics,
+            spectral_dyn,
             last_applied_dyn: 0.0,
         };
         count += 1;
@@ -112,6 +121,7 @@ pub fn process_iir_sample_os(
     active: &mut [ActiveBand],
     filters: &mut [CascadedStereoFilter; NUM_BANDS],
     detectors: &mut [DynamicDetector; NUM_BANDS],
+    spectral: &mut [SpectralBandProcessor; NUM_BANDS],
     os2: &mut Oversampler2x,
     os4: &mut Oversampler4x,
     os_factor: OversampleFactor,
@@ -130,6 +140,7 @@ pub fn process_iir_sample_os(
             active,
             filters,
             detectors,
+            spectral,
             effective_sr,
             natural_phase,
             l,
@@ -143,6 +154,7 @@ pub fn process_iir_sample_os(
                 active,
                 filters,
                 detectors,
+                spectral,
                 effective_sr,
                 natural_phase,
                 s0.0,
@@ -154,6 +166,7 @@ pub fn process_iir_sample_os(
                 active,
                 filters,
                 detectors,
+                spectral,
                 effective_sr,
                 natural_phase,
                 s1.0,
@@ -171,6 +184,7 @@ pub fn process_iir_sample_os(
                     active,
                     filters,
                     detectors,
+                    spectral,
                     effective_sr,
                     natural_phase,
                     sl,
@@ -190,6 +204,7 @@ fn process_one_pair(
     active: &mut [ActiveBand],
     filters: &mut [CascadedStereoFilter; NUM_BANDS],
     detectors: &mut [DynamicDetector; NUM_BANDS],
+    spectral: &mut [SpectralBandProcessor; NUM_BANDS],
     sr: f32,
     natural_phase: bool,
     mut l: f32,
@@ -199,44 +214,62 @@ fn process_one_pair(
 ) -> (f32, f32) {
     for band in active.iter_mut() {
         let idx = band.index;
-        if band.has_dynamics {
-            let dyn_offset = detectors[idx].compute_dynamic_gain_ext(
+        if band.spectral_dyn {
+            (l, r) = process_cascaded_placement(&mut filters[idx], band.placement, l, r);
+            (l, r) = process_spectral_placement(
+                &mut spectral[idx],
+                band.placement,
                 l,
                 r,
-                sc_l,
-                sc_r,
-                band.dyn_ext_sc,
+                sr,
+                band.freq,
+                band.q,
                 band.dyn_thresh,
-                band.dyn_auto,
                 band.dyn_range,
             );
-            if (dyn_offset - band.last_applied_dyn).abs() > 0.005 {
-                let dyn_coeffs = CascadedCoeffs::calculate(
-                    band.ftype,
-                    band.slope,
-                    sr,
-                    band.freq,
-                    band.gain + dyn_offset,
-                    band.q,
-                    natural_phase,
+        } else {
+            if band.has_dynamics {
+                let dyn_offset = detectors[idx].compute_dynamic_gain_ext(
+                    l,
+                    r,
+                    sc_l,
+                    sc_r,
+                    band.dyn_ext_sc,
+                    band.dyn_thresh,
+                    band.dyn_auto,
+                    band.dyn_range,
                 );
-                filters[idx].set_coeffs(&dyn_coeffs);
-                band.last_applied_dyn = dyn_offset;
+                if (dyn_offset - band.last_applied_dyn).abs() > 0.005 {
+                    let dyn_coeffs = CascadedCoeffs::calculate(
+                        band.ftype,
+                        band.slope,
+                        sr,
+                        band.freq,
+                        band.gain + dyn_offset,
+                        band.q,
+                        natural_phase,
+                    );
+                    filters[idx].set_coeffs(&dyn_coeffs);
+                    band.last_applied_dyn = dyn_offset;
+                }
             }
+            (l, r) = process_cascaded_placement(&mut filters[idx], band.placement, l, r);
         }
-        (l, r) = process_cascaded_placement(&mut filters[idx], band.placement, l, r);
     }
     (l, r)
 }
 
-/// Publishes the latest dynamic gain reduction telemetry for all active dynamic bands.
+/// Publishes the latest dynamic gain reduction telemetry for all active dynamic/spectral bands.
 pub fn publish_band_gr(
     active: &[ActiveBand],
     detectors: &[DynamicDetector; NUM_BANDS],
+    spectral: &[SpectralBandProcessor; NUM_BANDS],
     shared_gr: &SharedBandGr,
 ) {
     for band in active {
-        if band.has_dynamics {
+        if band.spectral_dyn {
+            shared_gr.store(band.index, spectral[band.index].last_gain_offset_db());
+        } else if band.has_dynamics {
             shared_gr.store(band.index, detectors[band.index].last_gain_offset_db());
         }
     }

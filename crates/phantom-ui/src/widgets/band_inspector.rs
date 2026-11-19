@@ -2,14 +2,20 @@
 //! Compact multi-row control strip for up to 24 Pro-Q 4 bands with Lucide vector icons,
 //! Headphone Solo Audition (click-toggle & press-and-hold), variable slopes, and Dynamics.
 
-use crate::theme::{band_color, BG_CARD, TEXT_DIMMED, TEXT_MUTED};
+use crate::theme::{
+    band_color, ACCENT_CYAN, ACCENT_GREEN, ACCENT_RED, BG_CARD, TEXT_DIMMED, TEXT_MUTED,
+};
 use crate::widgets::inspector_controls::{
     delete_band_button, power_button, shape_combo, slope_combo, solo_headphones_button,
 };
 use crate::widgets::inspector_rows::{
     draw_band_selector, draw_core_sliders_row, draw_dynamics_row,
 };
-use nih_plug_egui::egui::{self, CornerRadius, FontId, Margin, RichText, Ui};
+use crate::widgets::rotary_knob::{
+    draw_compact_knob, freq_to_norm, linear_to_norm, norm_to_freq, norm_to_linear, norm_to_q,
+    q_to_norm,
+};
+use nih_plug_egui::egui::{self, Color32, CornerRadius, FontId, Margin, RichText, Ui};
 
 pub struct BandInspectorData {
     pub selected_idx: usize,
@@ -31,6 +37,7 @@ pub struct BandInspectorData {
     pub dyn_release_ms: f32,
     pub dyn_auto_thresh: bool,
     pub dyn_ext_sc: bool,
+    pub spectral_enabled: bool,
     pub live_gr_db: f32,
 }
 
@@ -55,6 +62,7 @@ pub struct BandInspectorEvents {
     pub set_dyn_release_ms: Option<f32>,
     pub toggle_dyn_auto_thresh: bool,
     pub toggle_dyn_ext_sc: bool,
+    pub toggle_spectral: bool,
 }
 
 /// Draws a sleek single-line inspector placeholder when 0 EQ bands have been created yet.
@@ -153,4 +161,91 @@ pub fn draw_band_inspector(
         });
 
     events
+}
+
+/// Renders the 4 Rotary Knobs (`FREQ`, `GAIN`, `Q`, `DYN`) inside the Floating Band HUD Popover.
+pub fn draw_hud_knobs_row(
+    ui: &mut Ui,
+    data: &BandInspectorData,
+    accent: Color32,
+    events: &mut BandInspectorEvents,
+) {
+    let has_dyn = data.dyn_range.abs() > 0.05;
+    let diam = if has_dyn { 30.0 } else { 36.0 };
+    let idx = data.selected_idx;
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let f_txt = if data.freq >= 1000.0 {
+            format!("{:.2} kHz", data.freq / 1000.0)
+        } else {
+            format!("{:.1} Hz", data.freq)
+        };
+        if let Some(n) = draw_compact_knob(
+            ui,
+            ("hf", idx),
+            "FREQ",
+            &f_txt,
+            freq_to_norm(data.freq),
+            freq_to_norm(1000.0),
+            accent,
+            diam,
+            false,
+        ) {
+            events.set_freq = Some(norm_to_freq(n));
+        }
+        let g_txt = format!("{:+.1} dB", data.gain);
+        if let Some(n) = draw_compact_knob(
+            ui,
+            ("hg", idx),
+            "GAIN",
+            &g_txt,
+            linear_to_norm(data.gain, -30.0, 30.0),
+            0.5,
+            accent,
+            diam,
+            true,
+        ) {
+            events.set_gain = Some(norm_to_linear(n, -30.0, 30.0));
+        }
+        let q_txt = format!("{:.2}", data.q);
+        if let Some(n) = draw_compact_knob(
+            ui,
+            ("hq", idx),
+            "Q",
+            &q_txt,
+            q_to_norm(data.q),
+            q_to_norm(1.0),
+            accent,
+            diam,
+            false,
+        ) {
+            events.set_q = Some(norm_to_q(n));
+        }
+        let d_txt = if has_dyn {
+            format!("{:+.1} dB", data.dyn_range)
+        } else {
+            "OFF".into()
+        };
+        let d_col = if data.dyn_range > 0.05 {
+            ACCENT_GREEN
+        } else if data.dyn_range < -0.05 {
+            ACCENT_RED
+        } else {
+            ACCENT_CYAN
+        };
+        if let Some(n) = draw_compact_knob(
+            ui,
+            ("hd", idx),
+            "DYN",
+            &d_txt,
+            linear_to_norm(data.dyn_range, -24.0, 24.0),
+            0.5,
+            d_col,
+            diam,
+            true,
+        ) {
+            events.set_dyn_range = Some(norm_to_linear(n, -24.0, 24.0));
+        }
+    });
 }

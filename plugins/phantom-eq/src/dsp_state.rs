@@ -5,7 +5,7 @@
 use crate::params::{BandParams, NUM_BANDS};
 use phantom_dsp::{
     decode_mid_side, encode_mid_side, BiquadCoeffs, CascadedCoeffs, CascadedStereoFilter,
-    ChannelTarget, FilterSlope, FilterType, StereoBiquad,
+    ChannelTarget, FilterSlope, FilterType, SpectralBandProcessor, StereoBiquad,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -213,6 +213,37 @@ pub fn process_solo_sample(
             let (_, side) = encode_mid_side(in_l, in_r);
             let (f_side, _) = filter.process_stereo(side, 0.0);
             decode_mid_side(0.0, f_side)
+        }
+    }
+}
+
+/// Processes one stereo sample pair through a band's Spectral Dynamics processor respecting placement.
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+pub fn process_spectral_placement(
+    spec: &mut SpectralBandProcessor,
+    placement: ChannelTarget,
+    l: f32,
+    r: f32,
+    sr: f32,
+    freq: f32,
+    q: f32,
+    thresh: f32,
+    range: f32,
+) -> (f32, f32) {
+    match placement {
+        ChannelTarget::Stereo => spec.process_stereo(l, r, sr, freq, q, thresh, range),
+        ChannelTarget::Left => (spec.process_stereo(l, 0.0, sr, freq, q, thresh, range).0, r),
+        ChannelTarget::Right => (l, spec.process_stereo(0.0, r, sr, freq, q, thresh, range).1),
+        ChannelTarget::Mid => {
+            let (mid, side) = encode_mid_side(l, r);
+            let f_mid = spec.process_stereo(mid, 0.0, sr, freq, q, thresh, range).0;
+            decode_mid_side(f_mid, side)
+        }
+        ChannelTarget::Side => {
+            let (mid, side) = encode_mid_side(l, r);
+            let f_side = spec.process_stereo(side, 0.0, sr, freq, q, thresh, range).0;
+            decode_mid_side(mid, f_side)
         }
     }
 }

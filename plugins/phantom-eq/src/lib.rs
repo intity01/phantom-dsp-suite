@@ -7,13 +7,14 @@ pub mod dsp_state;
 pub mod editor;
 pub mod params;
 pub mod processor;
+pub mod state;
 
 use dsp_state::SharedBandGr;
 use editor::{draw_editor, EditorShared, EditorState, NO_SOLO};
 use nih_plug::prelude::*;
 use nih_plug_egui::create_egui_editor;
 use params::{PhantomEqParams, ProcessingModeParam};
-use phantom_dsp::{SharedMeters, SharedSpectrum};
+use phantom_dsp::{CollisionRegistry, SharedMeters, SharedSpectrum};
 use processor::EqProcessor;
 use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
@@ -32,6 +33,7 @@ pub struct PhantomEq {
     solo_band: Arc<AtomicU8>,
     shared_sample_rate: Arc<AtomicU32>,
     shared_latency: Arc<AtomicU32>,
+    collision_slot: usize,
     last_reported_latency: u32,
     last_mode: ProcessingModeParam,
     was_bypassed: bool,
@@ -48,10 +50,17 @@ impl Default for PhantomEq {
             solo_band: Arc::new(AtomicU8::new(NO_SOLO)),
             shared_sample_rate: Arc::new(AtomicU32::new(44100.0_f32.to_bits())),
             shared_latency: Arc::new(AtomicU32::new(0)),
+            collision_slot: CollisionRegistry::register_instance(),
             last_reported_latency: 0,
             last_mode: ProcessingModeParam::ZeroLatency,
             was_bypassed: false,
         }
+    }
+}
+
+impl Drop for PhantomEq {
+    fn drop(&mut self) {
+        CollisionRegistry::unregister_instance(self.collision_slot);
     }
 }
 
@@ -94,6 +103,7 @@ impl Plugin for PhantomEq {
             solo_band: self.solo_band.clone(),
             sample_rate_bits: self.shared_sample_rate.clone(),
             latency_samples: self.shared_latency.clone(),
+            collision_slot: self.collision_slot,
         };
 
         create_egui_editor(

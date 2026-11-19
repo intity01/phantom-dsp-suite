@@ -1,7 +1,7 @@
 //! Band Inspector Row Helpers (Band Tabs, Core EQ Sliders, Dynamics Ballistics)
 //! Split from `band_inspector.rs` to keep every file cleanly modular and <= 300 lines.
 
-use crate::theme::{band_color, ACCENT_AMBER, ACCENT_CYAN, TEXT_DIMMED, TEXT_MUTED};
+use crate::theme::{band_color, ACCENT_AMBER, ACCENT_CYAN, ACCENT_PURPLE, TEXT_DIMMED, TEXT_MUTED};
 use crate::widgets::band_inspector::{BandInspectorData, BandInspectorEvents};
 use crate::widgets::inspector_controls::{compact_slider, draw_live_gr_pill};
 use nih_plug_egui::egui::{Color32, FontId, RichText, Ui};
@@ -208,6 +208,23 @@ pub fn draw_dynamics_row(ui: &mut Ui, data: &BandInspectorData, events: &mut Ban
             .clicked()
         {
             events.toggle_dyn_ext_sc = true;
+        }
+        if ui
+            .selectable_label(
+                data.spectral_enabled,
+                RichText::new("SPEC")
+                    .font(FontId::proportional(10.0))
+                    .strong()
+                    .color(if data.spectral_enabled {
+                        ACCENT_PURPLE
+                    } else {
+                        TEXT_MUTED
+                    }),
+            )
+            .on_hover_text("Per-band Spectral Dynamics (selective frequency suppression)")
+            .clicked()
+        {
+            events.toggle_spectral = true;
         }
 
         ui.separator();

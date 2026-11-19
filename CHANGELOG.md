@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Phase B — Pro-Q 4+ Flagship UI, Intelligent DSP & State Engine (`phantom-dsp`, `phantom-ui`, `phantom-eq`)**:
+  - **Pro-Q 4 Floating Band Popover HUD & Precision Rotary Knobs**: On-canvas popover anchored to the selected node with 4 rotary knobs (`FREQ`, `GAIN`, `Q`, `DYN`), filter shape vector icons, slope/routing pills, Spectral Dynamics (`SPEC`) toggle, Headphone Solo latch/momentary audition, and `[HUD / DOCK / HUD+DOCK]` layout switch.
+  - **Resizable Plugin Window**: `ResizableWindow` wrapper (`860×500` minimum, `1100×640` default) with responsive EQ canvas and output meter scaling.
+  - **Interactive Piano Roll & Musical Note Snapping**: 20px `C1..C8` Piano Roll bar with active band note dots, live note + cents readout, click-key-to-snap frequency, and `[SNAP]` / `Ctrl`-drag semitone snapping.
+  - **Spectrum Grab, EQ Match & Multi-Instance Collision Detection**: Automatic resonant peak detection (`detect_spectrum_peaks`) with click-and-drag Bell creation, `EqMatchEngine` reference vs. current track 1/3-octave curve fitting (up to 12 bands), and 16-slot lock-free `CollisionRegistry` cross-track masking overlay.
+  - **Per-Band Spectral Dynamics (`SpectralBandProcessor`)**: Zero-latency 9-subband selective resonance compressor/expander within each band's target bandwidth.
+  - **Preset Manager, A/B State Bank & 64-Step Undo/Redo**: 12 built-in Mastering/Mixing/Creative Factory Presets + offline `.peq` User Presets (`~/.config/phantom-dsp/presets/phantom-eq/`), `<` / `>` preset navigation, `[A / B]` comparison slots with `[Copy]`, and 64-step Undo/Redo (`Ctrl+Z` / `Ctrl+Y`).
+
 ### Planned
 - **Phantom Comp** — Mastering & bus compressor with visual transfer curve and sidechain filtering.
 - **Phantom Limiter** — True Peak brickwall mastering limiter with EBU R128 loudness metering.

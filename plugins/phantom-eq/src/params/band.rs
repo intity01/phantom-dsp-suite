@@ -48,6 +48,9 @@ pub struct BandParams {
 
     #[id = "dyn_ext_sc"]
     pub dynamic_ext_sc: BoolParam,
+
+    #[id = "spec_dyn"]
+    pub spectral_dynamics: BoolParam,
 }
 
 impl BandParams {
@@ -134,6 +137,7 @@ impl BandParams {
             .with_value_to_string(formatters::v2s_f32_rounded(0)),
             dynamic_auto_thresh: BoolParam::new(format!("{p} Dynamic Auto Threshold"), true),
             dynamic_ext_sc: BoolParam::new(format!("{p} Dynamic External Sidechain"), false),
+            spectral_dynamics: BoolParam::new(format!("{p} Spectral Dynamics"), false),
         }
     }
 }

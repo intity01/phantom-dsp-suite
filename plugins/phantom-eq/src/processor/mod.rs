@@ -14,7 +14,7 @@ use linear::{LinearPhaseTracker, LP_CHUNK_SIZE};
 use phantom_dsp::{
     AutoGainCompensator, CascadedStereoFilter, ChannelTarget, CharacterMode, CharacterProcessor,
     DynamicDetector, LinearPhaseEngine, OutputMeter, OversampleFactor, Oversampler2x,
-    Oversampler4x, SharedMeters,
+    Oversampler4x, SharedMeters, SpectralBandProcessor,
 };
 use solo::SoloCrossfade;
 
@@ -22,6 +22,7 @@ pub struct EqProcessor {
     sample_rate: f32,
     filters: [CascadedStereoFilter; NUM_BANDS],
     dynamic_detectors: [DynamicDetector; NUM_BANDS],
+    spectral_processors: [SpectralBandProcessor; NUM_BANDS],
     solo: SoloCrossfade,
     oversampler_2x: Oversampler2x,
     oversampler_4x: Oversampler4x,
@@ -44,6 +45,7 @@ impl EqProcessor {
             sample_rate: 44100.0,
             filters: std::array::from_fn(|_| CascadedStereoFilter::new()),
             dynamic_detectors: std::array::from_fn(|_| DynamicDetector::new()),
+            spectral_processors: std::array::from_fn(|_| SpectralBandProcessor::new()),
             solo: SoloCrossfade::new(),
             oversampler_2x: Oversampler2x::new(),
             oversampler_4x: Oversampler4x::new(),
@@ -65,6 +67,9 @@ impl EqProcessor {
         for det in &mut self.dynamic_detectors {
             det.update_ballistics(self.sample_rate, 10.0, 100.0);
         }
+        for spec in &mut self.spectral_processors {
+            spec.set_ballistics(self.sample_rate, 10.0, 100.0);
+        }
         self.lp_tracker.mark_dirty();
     }
 
@@ -74,6 +79,9 @@ impl EqProcessor {
         }
         for det in &mut self.dynamic_detectors {
             det.reset();
+        }
+        for spec in &mut self.spectral_processors {
+            spec.reset();
         }
         self.solo.reset();
         self.oversampler_2x.reset();
@@ -151,6 +159,7 @@ impl EqProcessor {
                 params,
                 &mut self.filters,
                 &mut self.dynamic_detectors,
+                &mut self.spectral_processors,
                 shared_gr,
                 effective_sr,
                 natural_phase,
@@ -169,6 +178,7 @@ impl EqProcessor {
                         &mut active[..count],
                         &mut self.filters,
                         &mut self.dynamic_detectors,
+                        &mut self.spectral_processors,
                         &mut self.oversampler_2x,
                         &mut self.oversampler_4x,
                         os_factor,
@@ -194,7 +204,12 @@ impl EqProcessor {
                 right[i] = out_r;
             }
 
-            publish_band_gr(&active[..count], &self.dynamic_detectors, shared_gr);
+            publish_band_gr(
+                &active[..count],
+                &self.dynamic_detectors,
+                &self.spectral_processors,
+                shared_gr,
+            );
         }
 
         self.solo.finish_block(solo_target);
