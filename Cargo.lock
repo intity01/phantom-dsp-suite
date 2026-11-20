@@ -2219,7 +2219,12 @@ dependencies = [
 name = "phantom-launcher"
 version = "0.1.0"
 dependencies = [
+ "crc32fast",
  "eframe",
+ "flate2",
+ "png",
+ "serde",
+ "serde_json",
  "sha2",
 ]
 
@@ -2230,6 +2235,36 @@ dependencies = [
  "nih_plug",
  "nih_plug_egui",
  "phantom-dsp",
+ "png",
+]
+
+[[package]]
+name = "phantom-vox"
+version = "0.1.0"
+dependencies = [
+ "nih_plug",
+ "nih_plug_egui",
+ "phantom-dsp",
+ "phantom-ui",
+ "phantom-vox-dsp",
+]
+
+[[package]]
+name = "phantom-vox-dsp"
+version = "0.1.0"
+dependencies = [
+ "realfft",
+ "serde",
+]
+
+[[package]]
+name = "phantom-vox-studio"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "phantom-vox-dsp",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

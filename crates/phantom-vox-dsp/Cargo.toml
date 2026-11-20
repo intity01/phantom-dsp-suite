@@ -1,0 +1,11 @@
+[package]
+name = "phantom-vox-dsp"
+version = "0.1.0"
+edition = "2021"
+authors = ["Intity01"]
+license = "MIT OR Apache-2.0"
+description = "Clean-room pure-Rust vocal alignment, pitch tracking, time-stretching, and zero-allocation doubler DSP"
+
+[dependencies]
+realfft = "3.4"
+serde = { version = "1.0", features = ["derive"] }

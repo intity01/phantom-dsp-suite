@@ -52,6 +52,15 @@ jobs:
       - name: Run phantom-dsp release tests
         run: cargo test -p phantom-dsp --release -- --nocapture
 
+      - name: Run phantom-vox-dsp release tests
+        run: cargo test -p phantom-vox-dsp --release -- --nocapture
+
+      - name: Run phantom-vox release tests
+        run: cargo test -p phantom-vox --release -- --nocapture
+
+      - name: Run phantom-vox-studio release tests
+        run: cargo test -p phantom-vox-studio --release -- --nocapture
+
       - name: Run phantom-launcher release tests
         run: cargo test -p phantom-launcher --release -- --nocapture
 

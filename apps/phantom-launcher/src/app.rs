@@ -1,251 +1,226 @@
-//! Main eframe desktop GUI state and panel layout for Phantom Launcher.
+//! Main 3-pane native eframe/egui application for Phantom Launcher (100% offline, zero WebView).
 
-use crate::app_actions::{execute_install, execute_uninstall, execute_verify, ActionOutcome};
-use crate::discovery::{scan_plugin, InstallScanResult};
+use crate::app_overlays::{render_drop_overlay, render_toast};
+use crate::brand::BrandAssets;
+use crate::discovery::InstallScanResult;
+use crate::hosts::HostInfo;
 use crate::installer::InstallOptions;
-use crate::manifest::{github_releases_url, PluginStatus, AVAILABLE_PLUGINS, DEFAULT_GITHUB_REPO};
-use crate::paths::{
-    default_user_clap_dir, default_user_vst3_dir, host_dist_os_dir, resolve_install_paths,
-    InstallPaths, InstallScope,
-};
-use crate::platform::{detect_running_cubase, open_folder, open_url, utc_hms_now};
-use crate::theme::{apply_obsidian_theme, BG_PANEL, TEXT_DIMMED, TEXT_MUTED};
-use crate::ui_cards::{render_plugin_card, CardAction};
-use crate::ui_log::{render_activity_log, LogEntry, LogLevel};
-use crate::ui_panels::{
-    render_cubase_banner, render_header, render_release_panel, render_settings_bar,
-};
-use eframe::egui::{self, FontId, Margin, RichText};
+use crate::manifest::{find_plugin, github_releases_url, BrowseGroup, AVAILABLE_PLUGINS};
+use crate::paths::InstallScope;
+use crate::platform::open_url;
+use crate::theme::{paint_window_glow, BG_SURFACE, BG_WINDOW, BORDER_SUBTLE};
+use crate::ui_about::render_about_page;
+use crate::ui_art::ArtCache;
+use crate::ui_grid::render_browse_grid;
+use crate::ui_inspector::{render_inspector, PendingConfirm};
+use crate::ui_log::{render_activity_log_page, LogEntry, LogLevel};
+use crate::ui_settings::render_settings_page;
+use crate::ui_sidebar::{render_sidebar, AppView, BrowseScope, SidebarCounts};
+use crate::ui_toolbar::render_toolbar;
+use eframe::egui::{self, CornerRadius, Id, Margin, Stroke};
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 pub struct PhantomLauncherApp {
-    scope: InstallScope,
-    custom_vst3: String,
-    custom_clap: String,
-    opts: InstallOptions,
-    github_repo: String,
-    show_release_panel: bool,
-    scans: HashMap<&'static str, InstallScanResult>,
-    running_cubase: Option<String>,
-    logs: Vec<LogEntry>,
-}
-
-impl PhantomLauncherApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        apply_obsidian_theme(&cc.egui_ctx);
-        let mut app = Self {
-            scope: InstallScope::User,
-            custom_vst3: default_user_vst3_dir().to_string_lossy().into_owned(),
-            custom_clap: default_user_clap_dir().to_string_lossy().into_owned(),
-            opts: InstallOptions::default(),
-            github_repo: DEFAULT_GITHUB_REPO.to_string(),
-            show_release_panel: false,
-            scans: HashMap::new(),
-            running_cubase: detect_running_cubase(),
-            logs: Vec::new(),
-        };
-        app.log(
-            LogLevel::Info,
-            "Phantom Launcher started in 100% offline mode (zero network requests, zero telemetry).",
-        );
-        if let Some(proc_name) = app.running_cubase.clone() {
-            app.log(
-                LogLevel::Warn,
-                format!(
-                    "{proc_name} detected running — close Cubase before overwriting locked plugins."
-                ),
-            );
-        }
-        app.rescan_all();
-        app
-    }
-
-    fn current_paths(&self) -> InstallPaths {
-        resolve_install_paths(self.scope, &self.custom_vst3, &self.custom_clap)
-    }
-
-    fn log(&mut self, level: LogLevel, message: impl Into<String>) {
-        self.logs.push(LogEntry {
-            time: utc_hms_now(),
-            level,
-            message: message.into(),
-        });
-    }
-
-    fn rescan_all(&mut self) {
-        let paths = self.current_paths();
-        self.scans.clear();
-        for plugin in AVAILABLE_PLUGINS {
-            self.scans
-                .insert(plugin.id, scan_plugin(plugin, &paths, None));
-        }
-        self.running_cubase = detect_running_cubase();
-        if let Some(eq_scan) = self.scans.get("phantom-eq") {
-            let src_desc = eq_scan
-                .source
-                .detected_root
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| format!("not found (expected dist/{})", host_dist_os_dir()));
-            self.log(
-                LogLevel::Info,
-                format!(
-                    "Scanned disk — VST3: {} | Source: {src_desc}",
-                    paths.vst3_dir.display()
-                ),
-            );
-        }
-    }
-
-    fn apply_outcome(&mut self, outcome: ActionOutcome) {
-        for (lvl, msg) in outcome.messages {
-            self.log(lvl, msg);
-        }
-        if let Some((id, scan)) = outcome.updated_scan {
-            self.scans.insert(id, scan);
-        }
-        if outcome.needs_rescan {
-            self.rescan_all();
-        }
-    }
-
-    fn handle_card_action(&mut self, ctx: &egui::Context, action: CardAction) {
-        let paths = self.current_paths();
-        match action {
-            CardAction::Install(id) => self.apply_outcome(execute_install(id, &paths, self.opts)),
-            CardAction::Uninstall(id) => self.apply_outcome(execute_uninstall(id, &paths)),
-            CardAction::Verify(id) => self.apply_outcome(execute_verify(id, &paths)),
-            CardAction::CopyHash(hash) => {
-                ctx.copy_text(hash.clone());
-                self.log(
-                    LogLevel::Info,
-                    format!("Copied SHA-256 to clipboard: {hash}"),
-                );
-            }
-        }
-    }
+    pub(crate) view: AppView,
+    pub(crate) scope: BrowseScope,
+    pub(crate) query: String,
+    pub(crate) selected_id: Option<&'static str>,
+    pub(crate) install_scope: InstallScope,
+    pub(crate) custom_vst3: String,
+    pub(crate) custom_clap: String,
+    pub(crate) opts: InstallOptions,
+    pub(crate) auto_rescan_daws: bool,
+    pub(crate) github_repo: String,
+    pub(crate) scans: HashMap<&'static str, InstallScanResult>,
+    pub(crate) hosts: Vec<HostInfo>,
+    pub(crate) target_host_id: Option<&'static str>,
+    pub(crate) pending_confirm: Option<PendingConfirm>,
+    pub(crate) logs: Vec<LogEntry>,
+    pub(crate) brand: BrandAssets,
+    pub(crate) art_cache: ArtCache,
+    pub(crate) last_grid_cols: usize,
+    pub(crate) search_id: Id,
+    pub(crate) toast: Option<(String, Instant)>,
 }
 
 impl eframe::App for PhantomLauncherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::TopBottomPanel::top("header_panel")
-            .frame(egui::Frame::NONE.fill(BG_PANEL))
+        let visible = self.visible_plugins();
+        self.handle_shortcuts(ctx, &visible);
+
+        for f in ctx.input(|i| i.raw.dropped_files.clone()) {
+            if let Some(p) = f.path {
+                self.handle_dropped_file(&p);
+            }
+        }
+        let hovering_files = ctx.input(|i| !i.raw.hovered_files.is_empty());
+
+        let counts = SidebarCounts {
+            all: AVAILABLE_PLUGINS.len(),
+            eq: AVAILABLE_PLUGINS
+                .iter()
+                .filter(|p| p.browse_group == BrowseGroup::Equalizer)
+                .count(),
+            dynamics: AVAILABLE_PLUGINS
+                .iter()
+                .filter(|p| p.browse_group == BrowseGroup::Dynamics)
+                .count(),
+            mastering: AVAILABLE_PLUGINS
+                .iter()
+                .filter(|p| p.browse_group == BrowseGroup::Mastering)
+                .count(),
+            installed: self.scans.values().filter(|s| s.is_any_installed()).count(),
+            updates: self.scans.values().filter(|s| s.has_update()).count(),
+            logs: self.logs.len(),
+        };
+
+        egui::SidePanel::left("sidebar")
+            .exact_width(236.0)
+            .resizable(false)
+            .frame(
+                egui::Frame::NONE
+                    .fill(BG_WINDOW)
+                    .inner_margin(Margin::symmetric(10, 8)),
+            )
             .show(ctx, |ui| {
-                let ev = render_header(ui, self.show_release_panel);
-                if ev.rescan {
+                paint_window_glow(ui.painter(), ctx.screen_rect());
+                render_sidebar(ui, &self.brand, &mut self.view, &mut self.scope, &counts);
+            });
+
+        let has_local_src = self.scans.values().any(|s| s.has_any_source());
+        egui::TopBottomPanel::top("titlebar")
+            .exact_height(52.0)
+            .frame(
+                egui::Frame::NONE
+                    .fill(BG_WINDOW)
+                    .inner_margin(Margin::symmetric(10, 10)),
+            )
+            .show(ctx, |ui| {
+                let tb = render_toolbar(ui, &mut self.query, &mut self.view, has_local_src);
+                self.search_id = tb.search_id;
+                if tb.rescan {
                     self.rescan_all();
+                    self.notify("Rescanned plugins and DAWs");
                 }
-                if ev.toggle_releases {
-                    self.show_release_panel = !self.show_release_panel;
-                    if self.show_release_panel {
-                        let url = github_releases_url(&self.github_repo);
-                        self.log(
-                            LogLevel::Info,
-                            format!("Manual release check opened (offline-first). Target: {url}"),
-                        );
+                if tb.open_releases {
+                    let url = github_releases_url(&self.github_repo);
+                    if let Err(e) = open_url(&url) {
+                        self.log(LogLevel::Error, e);
                     }
                 }
             });
 
-        egui::TopBottomPanel::bottom("log_panel")
-            .frame(
+        let selected_plugin = self
+            .selected_id
+            .and_then(find_plugin)
+            .or_else(|| visible.first().copied())
+            .or_else(|| AVAILABLE_PLUGINS.first());
+        let active_host = self
+            .target_host_id
+            .and_then(|id| self.hosts.iter().find(|h| h.id == id && h.installed))
+            .cloned();
+
+        let mut ins_ev = None;
+        egui::SidePanel::right("inspector")
+            .exact_width(340.0)
+            .resizable(false)
+            .frame(egui::Frame::NONE.fill(BG_WINDOW).inner_margin(Margin {
+                left: 4,
+                right: 10,
+                top: 0,
+                bottom: 10,
+            }))
+            .show(ctx, |ui| {
                 egui::Frame::NONE
-                    .fill(BG_PANEL)
-                    .inner_margin(Margin::symmetric(14, 10)),
-            )
-            .show(ctx, |ui| render_activity_log(ctx, ui, &mut self.logs));
+                    .fill(BG_SURFACE)
+                    .stroke(Stroke::new(1.0_f32, BORDER_SUBTLE))
+                    .corner_radius(CornerRadius::same(14))
+                    .inner_margin(Margin::same(16))
+                    .show(ui, |ui| {
+                        ui.set_height(ui.available_height());
+                        let scan = selected_plugin.and_then(|p| self.scans.get(p.id));
+                        ins_ev = Some(render_inspector(
+                            ui,
+                            selected_plugin,
+                            scan,
+                            active_host.as_ref(),
+                            self.opts,
+                            self.pending_confirm.as_ref(),
+                            self.logs.last(),
+                            &self.art_cache,
+                        ));
+                    });
+            });
+        if let Some(ev) = ins_ev {
+            self.apply_inspector_events(ctx, ev);
+        }
 
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::NONE
-                    .fill(BG_PANEL)
-                    .inner_margin(Margin::symmetric(14, 10)),
-            )
+            .frame(egui::Frame::NONE.fill(BG_WINDOW).inner_margin(Margin {
+                left: 4,
+                right: 6,
+                top: 0,
+                bottom: 10,
+            }))
             .show(ctx, |ui| {
-                if self.show_release_panel {
-                    let ev = render_release_panel(ui, &mut self.github_repo);
-                    if let Some(url) = ev.open_url {
-                        match open_url(&url) {
-                            Ok(()) => self.log(LogLevel::Info, format!("Opened browser -> {url}")),
-                            Err(e) => self.log(LogLevel::Error, e),
-                        }
-                    }
-                    if let Some(url) = ev.copy_url {
-                        ctx.copy_text(url.clone());
-                        self.log(LogLevel::Info, format!("Copied releases URL: {url}"));
-                    }
-                    ui.add_space(8.0);
-                }
-
-                if let Some(daw) = self.running_cubase.clone() {
-                    if render_cubase_banner(ui, &daw) {
-                        self.running_cubase = detect_running_cubase();
-                    }
-                    ui.add_space(8.0);
-                }
-
-                let paths = self.current_paths();
-                let set_ev = render_settings_bar(
-                    ui,
-                    &mut self.scope,
-                    &mut self.custom_vst3,
-                    &mut self.custom_clap,
-                    &mut self.opts,
-                    &paths,
-                );
-                if set_ev.changed {
-                    self.rescan_all();
-                }
-                if set_ev.open_vst3 {
-                    if let Err(e) = open_folder(&paths.vst3_dir) {
-                        self.log(LogLevel::Error, e);
-                    }
-                }
-                if set_ev.open_clap {
-                    if let Err(e) = open_folder(&paths.clap_dir) {
-                        self.log(LogLevel::Error, e);
-                    }
-                }
-
-                ui.add_space(10.0);
-                let ready = AVAILABLE_PLUGINS
-                    .iter()
-                    .filter(|p| p.status == PluginStatus::Ready)
-                    .count();
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("PHANTOM DSP SUITE")
-                            .font(FontId::proportional(11.0))
-                            .strong()
-                            .color(TEXT_MUTED),
-                    );
-                    ui.label(
-                        RichText::new(format!(
-                            "({ready} Ready • {} Planned)",
-                            AVAILABLE_PLUGINS.len() - ready
-                        ))
-                        .font(FontId::proportional(11.0))
-                        .color(TEXT_DIMMED),
-                    );
-                });
-                ui.add_space(6.0);
-
-                let mut pending = None;
-                egui::ScrollArea::vertical()
-                    .id_salt("plugins_scroll")
+                egui::Frame::NONE
+                    .fill(BG_SURFACE)
+                    .stroke(Stroke::new(1.0_f32, BORDER_SUBTLE))
+                    .corner_radius(CornerRadius::same(14))
+                    .inner_margin(Margin::symmetric(24, 20))
                     .show(ui, |ui| {
-                        for plugin in AVAILABLE_PLUGINS {
-                            if let Some(scan) = self.scans.get(plugin.id) {
-                                if let Some(act) = render_plugin_card(ui, plugin, scan, self.opts) {
-                                    pending = Some(act);
-                                }
-                                ui.add_space(8.0);
+                        ui.set_height(ui.available_height());
+                        match self.view {
+                            AppView::Browse => {
+                                let gev = render_browse_grid(
+                                    ui,
+                                    self.scope,
+                                    &visible,
+                                    AVAILABLE_PLUGINS,
+                                    &self.scans,
+                                    &self.hosts,
+                                    self.target_host_id,
+                                    selected_plugin.map(|p| p.id),
+                                    &self.art_cache,
+                                );
+                                self.apply_grid_events(gev);
                             }
+                            AppView::Log => {
+                                if let Some(msg) = render_activity_log_page(ctx, ui, &mut self.logs)
+                                {
+                                    self.notify(msg);
+                                }
+                            }
+                            AppView::Settings => {
+                                let paths = self.current_paths();
+                                let sev = render_settings_page(
+                                    ui,
+                                    &mut self.install_scope,
+                                    &mut self.custom_vst3,
+                                    &mut self.custom_clap,
+                                    &mut self.opts,
+                                    &mut self.auto_rescan_daws,
+                                    &mut self.github_repo,
+                                    &paths,
+                                );
+                                self.apply_settings_events(ctx, sev);
+                            }
+                            AppView::About => render_about_page(ui, &self.brand),
                         }
                     });
-                if let Some(act) = pending {
-                    self.handle_card_action(ctx, act);
-                }
             });
+
+        if hovering_files {
+            render_drop_overlay(ctx);
+        }
+        if let Some((msg, at)) = &self.toast {
+            if at.elapsed() < Duration::from_secs_f32(3.2) {
+                render_toast(ctx, msg);
+                ctx.request_repaint_after(Duration::from_millis(200));
+            } else {
+                self.toast = None;
+            }
+        }
     }
 }
