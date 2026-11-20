@@ -123,6 +123,29 @@ pub fn paint_content_shell(ctx: &egui::Context, left: f32, top: f32, inset: i8) 
     );
 }
 
+/// Vertical gradient from `color` (opaque) to transparent, used to fade scrolled content
+/// into its pane. `opaque_at_top` picks which edge is solid.
+pub fn paint_vertical_fade(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    color: Color32,
+    opaque_at_top: bool,
+) {
+    let (top, bottom) = if opaque_at_top {
+        (color, Color32::TRANSPARENT)
+    } else {
+        (Color32::TRANSPARENT, color)
+    };
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(rect.left_top(), top);
+    mesh.colored_vertex(rect.right_top(), top);
+    mesh.colored_vertex(rect.left_bottom(), bottom);
+    mesh.colored_vertex(rect.right_bottom(), bottom);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(1, 3, 2);
+    painter.add(mesh);
+}
+
 pub fn draw_pill(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {
     egui::Frame::NONE
         .fill(bg)
