@@ -8,7 +8,9 @@ use crate::installer::InstallOptions;
 use crate::manifest::{find_plugin, github_releases_url, BrowseGroup, AVAILABLE_PLUGINS};
 use crate::paths::InstallScope;
 use crate::platform::open_url;
-use crate::theme::{paint_window_backdrop, BG_SURFACE, BORDER_SUBTLE};
+use crate::theme::{
+    paint_content_shell, paint_window_backdrop, BG_SURFACE, PANE_RADIUS, SHELL_GAP,
+};
 use crate::ui_about::render_about_page;
 use crate::ui_art::ArtCache;
 use crate::ui_grid::render_browse_grid;
@@ -17,9 +19,14 @@ use crate::ui_log::{render_activity_log_page, LogEntry, LogLevel};
 use crate::ui_settings::render_settings_page;
 use crate::ui_sidebar::{render_sidebar, AppView, BrowseScope, SidebarCounts};
 use crate::ui_toolbar::render_toolbar;
-use eframe::egui::{self, CornerRadius, Id, Margin, Stroke};
+use eframe::egui::{self, CornerRadius, Id, Margin};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+
+const SIDEBAR_W: f32 = 236.0;
+const TITLEBAR_H: f32 = 52.0;
+/// Space between the content shell and the window's right and bottom edges.
+const OUTER_INSET: i8 = 10;
 
 pub struct PhantomLauncherApp {
     pub(crate) view: AppView,
@@ -47,6 +54,7 @@ pub struct PhantomLauncherApp {
 impl eframe::App for PhantomLauncherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         paint_window_backdrop(ctx);
+        paint_content_shell(ctx, SIDEBAR_W, TITLEBAR_H, OUTER_INSET);
         let visible = self.visible_plugins();
         self.handle_shortcuts(ctx, &visible);
 
@@ -81,8 +89,9 @@ impl eframe::App for PhantomLauncherApp {
         };
 
         egui::SidePanel::left("sidebar")
-            .exact_width(236.0)
+            .exact_width(SIDEBAR_W)
             .resizable(false)
+            .show_separator_line(false)
             .frame(
                 egui::Frame::NONE
                     .fill(egui::Color32::TRANSPARENT)
@@ -94,7 +103,8 @@ impl eframe::App for PhantomLauncherApp {
 
         let has_local_src = self.scans.values().any(|s| s.has_any_source());
         egui::TopBottomPanel::top("titlebar")
-            .exact_height(52.0)
+            .exact_height(TITLEBAR_H)
+            .show_separator_line(false)
             .frame(
                 egui::Frame::NONE
                     .fill(egui::Color32::TRANSPARENT)
@@ -129,21 +139,21 @@ impl eframe::App for PhantomLauncherApp {
         egui::SidePanel::right("inspector")
             .exact_width(340.0)
             .resizable(false)
+            .show_separator_line(false)
             .frame(
                 egui::Frame::NONE
                     .fill(egui::Color32::TRANSPARENT)
                     .inner_margin(Margin {
-                        left: 4,
-                        right: 10,
-                        top: 0,
-                        bottom: 10,
+                        left: SHELL_GAP / 2,
+                        right: SHELL_GAP + OUTER_INSET,
+                        top: SHELL_GAP,
+                        bottom: SHELL_GAP + OUTER_INSET,
                     }),
             )
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(BG_SURFACE)
-                    .stroke(Stroke::new(1.0_f32, BORDER_SUBTLE))
-                    .corner_radius(CornerRadius::same(14))
+                    .corner_radius(CornerRadius::same(PANE_RADIUS))
                     .inner_margin(Margin::same(16))
                     .show(ui, |ui| {
                         ui.set_height(ui.available_height());
@@ -169,17 +179,16 @@ impl eframe::App for PhantomLauncherApp {
                 egui::Frame::NONE
                     .fill(egui::Color32::TRANSPARENT)
                     .inner_margin(Margin {
-                        left: 4,
-                        right: 6,
-                        top: 0,
-                        bottom: 10,
+                        left: SHELL_GAP,
+                        right: SHELL_GAP / 2,
+                        top: SHELL_GAP,
+                        bottom: SHELL_GAP + OUTER_INSET,
                     }),
             )
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(BG_SURFACE)
-                    .stroke(Stroke::new(1.0_f32, BORDER_SUBTLE))
-                    .corner_radius(CornerRadius::same(14))
+                    .corner_radius(CornerRadius::same(PANE_RADIUS))
                     .inner_margin(Margin::symmetric(24, 20))
                     .show(ui, |ui| {
                         ui.set_height(ui.available_height());
