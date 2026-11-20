@@ -81,6 +81,9 @@ fn stereo_m2s_and_mono_zero_nan_across_all_modes() {
             mono_check: false,
             mix: 0.60,
             output_gain_lin: 1.0,
+            focus_low_hz: 20.0,
+            focus_high_hz: 20_000.0,
+            audition: false,
         };
         for mono_in in [false, true] {
             proc.reset();

@@ -4,6 +4,7 @@
 //! `VocalDoublerEngine` and `LiveSidechainAligner` using fixed `[0.0_f32; 256]` stack scratch
 //! buffers, click-free 10 ms `BypassCrossfade`, PDC-aligned dry delay, and smoothed mix/gain.
 
+use crate::original_audition::OriginalAudition;
 use crate::params::{VoicesParam, VoxModeParam};
 use crate::pdc_meter::{PdcDelayLine, VoxMeterTracker};
 use crate::telemetry::SharedVoxTelemetry;
@@ -28,6 +29,10 @@ pub struct VoxBlockConfig {
     pub mono_check: bool,
     pub mix: f32,
     pub output_gain_lin: f32,
+    pub focus_low_hz: f32,
+    pub focus_high_hz: f32,
+    /// True while the user holds "hear original".
+    pub audition: bool,
 }
 
 /// Real-time vocal doubler & live sidechain alignment processor (zero heap allocs in `process`).
@@ -39,6 +44,7 @@ pub struct VoxProcessor {
     gain_smooth: OnePoleSmoother,
     pdc: PdcDelayLine,
     tracker: VoxMeterTracker,
+    audition: OriginalAudition,
 }
 
 impl Default for VoxProcessor {
@@ -57,6 +63,7 @@ impl VoxProcessor {
             gain_smooth: OnePoleSmoother::new(1.0),
             pdc: PdcDelayLine::new(),
             tracker: VoxMeterTracker::new(),
+            audition: OriginalAudition::new(),
         };
         proc.initialize(48_000.0);
         proc
@@ -74,6 +81,7 @@ impl VoxProcessor {
         self.mix_smooth.set_sample_rate(sr, 15.0);
         self.gain_smooth.set_sample_rate(sr, 15.0);
         self.tracker.set_sample_rate(sr);
+        self.audition.set_sample_rate(sr);
     }
 
     pub fn reset(&mut self) {
@@ -81,6 +89,7 @@ impl VoxProcessor {
         self.aligner.reset();
         self.pdc.reset();
         self.tracker.reset();
+        self.audition.reset();
     }
 
     #[inline]
@@ -161,8 +170,12 @@ impl VoxProcessor {
                 } else {
                     (dry_l[i], dry_r[i])
                 };
-                let ol = sanitize(rl * (1.0 - fade) + (wet_l[i] * g) * fade);
-                let or = sanitize(rr * (1.0 - fade) + (wet_r[i] * g) * fade);
+                let processed = (
+                    rl * (1.0 - fade) + (wet_l[i] * g) * fade,
+                    rr * (1.0 - fade) + (wet_r[i] * g) * fade,
+                );
+                let (ol, or) = self.audition.tick((rl, rr), processed);
+                let (ol, or) = (sanitize(ol), sanitize(or));
                 left[offset + i] = ol;
                 right[offset + i] = or;
                 self.tracker.push_output(ol, or);
@@ -228,7 +241,8 @@ impl VoxProcessor {
                 let fade = self.bypass_xfade.next_wet();
                 let rm = if use_pdc { pdc[i] } else { dry[i] };
                 let wm = 0.5 * (wet_l[i] + wet_r[i]);
-                let om = sanitize(rm * (1.0 - fade) + (wm * g) * fade);
+                let pm = rm * (1.0 - fade) + (wm * g) * fade;
+                let om = sanitize(self.audition.tick((rm, rm), (pm, pm)).0);
                 mono[offset + i] = om;
                 self.tracker.push_output(om, om);
             }
@@ -245,6 +259,7 @@ impl VoxProcessor {
 
     fn prepare_smoothers(&mut self, cfg: &VoxBlockConfig) {
         self.bypass_xfade.set_bypassed(cfg.bypassed);
+        self.audition.set_active(cfg.audition);
         self.mix_smooth.set_target(cfg.mix.clamp(0.0, 1.0));
         self.gain_smooth
             .set_target(cfg.output_gain_lin.clamp(0.0, 16.0));

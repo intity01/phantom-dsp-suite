@@ -4,8 +4,10 @@
 //! Stereo (`2->2`), Mono-to-Stereo (`1->2`), and Mono (`1->1`) layouts, `.make_bypass()`,
 //! 10 ms PDC bypass crossfade, `LiveParamMirror`, and Dark Obsidian Pro GUI.
 
+pub mod ab_slots;
 pub mod editor;
 pub mod live_mirror;
+pub mod original_audition;
 pub mod params;
 pub mod pdc_meter;
 pub mod processor;
@@ -19,6 +21,7 @@ use nih_plug_egui::create_egui_editor;
 use params::PhantomVoxParams;
 use phantom_dsp::SharedMeters;
 use processor::{VoxBlockConfig, VoxProcessor};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use telemetry::SharedVoxTelemetry;
 
@@ -33,6 +36,8 @@ pub struct PhantomVox {
     shared_meters: Arc<SharedMeters>,
     shared_telemetry: Arc<SharedVoxTelemetry>,
     live_params: Arc<LiveParamMirror>,
+    /// Held by the editor's "hear original" button (GUI only, never automated).
+    audition: Arc<AtomicBool>,
     mono_in_stereo_out: bool,
     last_reported_latency: u32,
 }
@@ -46,6 +51,7 @@ impl Default for PhantomVox {
             processor: VoxProcessor::new(),
             shared_meters: Arc::new(SharedMeters::new()),
             shared_telemetry: Arc::new(SharedVoxTelemetry::new()),
+            audition: Arc::new(AtomicBool::new(false)),
             mono_in_stereo_out: false,
             last_reported_latency: 0,
         }
@@ -69,6 +75,9 @@ impl PhantomVox {
             mono_check: live.read(&self.params.mono_check),
             mix: live.read(&self.params.mix_pct) * 0.01,
             output_gain_lin: util::db_to_gain(live.read(&self.params.output_gain)),
+            focus_low_hz: live.read(&self.params.focus_low_hz),
+            focus_high_hz: live.read(&self.params.focus_high_hz),
+            audition: self.audition.load(Ordering::Relaxed),
         }
     }
 }
@@ -116,6 +125,7 @@ impl Plugin for PhantomVox {
             live: self.live_params.clone(),
             meters: self.shared_meters.clone(),
             telemetry: self.shared_telemetry.clone(),
+            audition: self.audition.clone(),
         };
         create_egui_editor(
             editor_state_handle,

@@ -2,7 +2,10 @@
 
 use nih_plug::prelude::*;
 use nih_plug_egui::EguiState;
-use std::sync::Arc;
+use phantom_vox_dsp::{FOCUS_MAX_HZ, FOCUS_MIN_HZ};
+use std::sync::{Arc, RwLock};
+
+pub use crate::ab_slots::AbSlots;
 
 #[derive(Enum, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VoxModeParam {
@@ -67,6 +70,18 @@ pub struct PhantomVoxParams {
 
     #[id = "output_gain"]
     pub output_gain: FloatParam,
+
+    /// Doubled voices are high-passed here (20 Hz = off).
+    #[id = "focus_low_hz"]
+    pub focus_low_hz: FloatParam,
+
+    /// Doubled voices are low-passed here (20 kHz = off).
+    #[id = "focus_high_hz"]
+    pub focus_high_hz: FloatParam,
+
+    /// The two A/B settings slots (kept with the project, not automatable).
+    #[persist = "ab-slots"]
+    pub ab_slots: Arc<RwLock<AbSlots>>,
 }
 
 impl Default for PhantomVoxParams {
@@ -159,6 +174,24 @@ impl Default for PhantomVoxParams {
             )
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            focus_low_hz: focus_param("Focus Low", FOCUS_MIN_HZ),
+            focus_high_hz: focus_param("Focus High", FOCUS_MAX_HZ),
+            ab_slots: Arc::new(RwLock::new(AbSlots::default())),
         }
     }
+}
+
+fn focus_param(name: &str, default: f32) -> FloatParam {
+    FloatParam::new(
+        name,
+        default,
+        FloatRange::Skewed {
+            min: FOCUS_MIN_HZ,
+            max: FOCUS_MAX_HZ,
+            factor: FloatRange::skew_factor(-2.0),
+        },
+    )
+    .with_unit(" Hz")
+    .with_value_to_string(formatters::v2s_f32_hz_then_khz(1))
+    .with_string_to_value(formatters::s2v_f32_hz_then_khz())
 }

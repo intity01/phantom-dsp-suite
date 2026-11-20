@@ -3,7 +3,9 @@
 mod align_view;
 mod align_view_meters;
 mod bottom_bar;
+mod compare;
 mod field_view;
+mod focus_strip;
 mod header;
 mod knobs;
 mod phase_meter;
@@ -17,6 +19,7 @@ use nih_plug::prelude::ParamSetter;
 use nih_plug_egui::egui::{self, Margin, Vec2};
 use phantom_dsp::SharedMeters;
 use phantom_ui::{configure_visuals, BG_PANEL};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use window_size::{current_preset, show_zoomed_root};
 
@@ -25,6 +28,8 @@ pub struct EditorShared {
     pub live: Arc<LiveParamMirror>,
     pub meters: Arc<SharedMeters>,
     pub telemetry: Arc<SharedVoxTelemetry>,
+    /// Held while the user presses "Hold: Original".
+    pub audition: Arc<AtomicBool>,
 }
 
 /// Per-window mutable GUI state (waveform scratch buffers avoid per-frame allocations).
@@ -76,7 +81,7 @@ pub fn draw_editor(
     let zoom = current_preset(&params.editor_state).zoom;
     show_zoomed_root(ctx, zoom, |ui| {
         egui::Frame::NONE.fill(BG_PANEL).show(ui, |ui| {
-            header::draw_header(ui, &live_setter, params);
+            header::draw_header(ui, &live_setter, params, &shared.audition);
 
             egui::Frame::NONE
                 .inner_margin(Margin::symmetric(10, 8))
@@ -92,6 +97,7 @@ pub fn draw_editor(
                             Vec2::new(card_w, vis_h),
                             &field_params,
                             &snap,
+                            (&live_setter, params),
                         );
                         align_view::draw_align_card(
                             ui,

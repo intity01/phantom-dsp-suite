@@ -93,6 +93,8 @@ fn run_doubler(
         sibilance_safe: cfg.sibilance_safe,
         mono_check: cfg.mono_check,
         mix: mix_smooth.current(),
+        focus_low_hz: cfg.focus_low_hz,
+        focus_high_hz: cfg.focus_high_hz,
     };
     let step = if mix_smooth.is_settled(1e-4) {
         n
