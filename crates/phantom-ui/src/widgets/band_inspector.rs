@@ -5,6 +5,7 @@
 use crate::theme::{
     band_color, ACCENT_CYAN, ACCENT_GREEN, ACCENT_RED, BG_CARD, TEXT_DIMMED, TEXT_MUTED,
 };
+use crate::views::floating_hud_parts::shape_uses_gain;
 use crate::widgets::inspector_controls::{
     delete_band_button, power_button, shape_combo, slope_combo, solo_headphones_button,
 };
@@ -164,11 +165,13 @@ pub fn draw_band_inspector(
     events
 }
 
-/// Renders the 4 Rotary Knobs (`FREQ`, `GAIN`, `Q`, `DYN`) inside the Floating Band HUD Popover.
+/// Renders the 4 Rotary Knobs (Freq, Gain, Q, Dynamic) inside the Floating Band HUD Popover.
+/// Gain is dimmed for shapes that ignore it (cuts and all-pass).
 pub fn draw_hud_knobs_row(
     ui: &mut Ui,
     data: &BandInspectorData,
     accent: Color32,
+    shape: &str,
     events: &mut BandInspectorEvents,
 ) {
     let has_dyn = data.dyn_range.abs() > 0.05;
@@ -191,7 +194,7 @@ pub fn draw_hud_knobs_row(
         if let Some(n) = draw_editable_compact_knob(
             ui,
             ("hf", idx),
-            "FREQ",
+            "Freq",
             &f_txt,
             freq_to_norm(data.freq),
             freq_to_norm(1000.0),
@@ -203,21 +206,27 @@ pub fn draw_hud_knobs_row(
             events.set_freq = Some(norm_to_freq(n));
         }
         let g_txt = format!("{:+.1} dB", data.gain);
-        if let Some(n) = draw_editable_compact_knob(
-            ui,
-            ("hg", idx),
-            "GAIN",
-            &g_txt,
-            linear_to_norm(data.gain, -30.0, 30.0),
-            0.5,
-            accent,
-            diam,
-            true,
-            KnobEditKind::GainDb {
-                min: -30.0,
-                max: 30.0,
-            },
-        ) {
+        let gain_res = ui.add_enabled_ui(shape_uses_gain(shape), |ui| {
+            draw_editable_compact_knob(
+                ui,
+                ("hg", idx),
+                "Gain",
+                &g_txt,
+                linear_to_norm(data.gain, -30.0, 30.0),
+                0.5,
+                accent,
+                diam,
+                true,
+                KnobEditKind::GainDb {
+                    min: -30.0,
+                    max: 30.0,
+                },
+            )
+        });
+        gain_res
+            .response
+            .on_disabled_hover_text(format!("{shape} has no gain setting"));
+        if let Some(n) = gain_res.inner {
             events.set_gain = Some(norm_to_linear(n, -30.0, 30.0));
         }
         let q_txt = format!("{:.2}", data.q);
@@ -250,7 +259,7 @@ pub fn draw_hud_knobs_row(
         if let Some(n) = draw_editable_compact_knob(
             ui,
             ("hd", idx),
-            "DYN",
+            "Dynamic",
             &d_txt,
             linear_to_norm(data.dyn_range, -24.0, 24.0),
             0.5,

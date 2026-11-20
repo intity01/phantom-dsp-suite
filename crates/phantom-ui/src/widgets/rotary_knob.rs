@@ -4,7 +4,9 @@
 //! and optional inline keyboard value/note input.
 
 use crate::theme::{with_alpha, TEXT_BRIGHT, TEXT_MUTED};
-use crate::widgets::knob_edit::{cancel_knob_edit, draw_knob_value_readout, KnobEditKind};
+use crate::widgets::knob_edit::{
+    cancel_knob_edit, draw_knob_value_readout, KnobEditKind, KNOB_HELP,
+};
 use nih_plug_egui::egui::{
     Align2, Color32, FontId, Painter, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2,
 };
@@ -191,6 +193,7 @@ pub fn draw_editable_rotary_knob(
             Rect::from_min_max(rect.min, Pos2::new(rect.max.x, value_rect.min.y))
         };
         let resp = ui.interact(dial_rect, ui.id().with("dial"), Sense::click_and_drag());
+        let resp = resp.on_hover_text(KNOB_HELP);
         let edit_id = ui.id().with("val_edit");
 
         let cur = cfg.normalized.clamp(0.0, 1.0);

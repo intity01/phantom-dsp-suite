@@ -179,10 +179,10 @@ fn test_floating_hud_dimensions_and_all_four_editable_knobs() {
     assert!((hud_rect.width() - FLOATING_HUD_WIDTH).abs() < 1e-3);
     assert!((hud_rect.height() - FLOATING_HUD_HEIGHT).abs() < 1e-3);
 
-    // 4 knobs centered inside inner width (284px): row_w = 4*62 + 3*6 = 266, pad = 9
-    // Inner min.x = hud_rect.min.x + 6.0; first knob x = min.x + 15.0, pitch = 68.0
+    // 4 knobs centered inside inner width (356px): row_w = 4*62 + 3*6 = 266, pad = 45
+    // Inner min.x = hud_rect.min.x + 6.0; first knob x = min.x + 51.0, pitch = 68.0
     // Knobs bottom readout center y ~= hud_rect.min.y + 4 + 22 + 2 + 3 + 58 - 6 = hud_rect.min.y + 83
-    let base_x = hud_rect.min.x + 15.0 + 31.0;
+    let base_x = hud_rect.min.x + 51.0 + 31.0;
     let val_y = hud_rect.min.y + 83.0;
     let pts = [
         Pos2::new(base_x, val_y),
