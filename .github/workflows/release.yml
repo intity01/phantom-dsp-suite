@@ -79,7 +79,11 @@ jobs:
           cargo build --release -p phantom-eq
           cargo build --release -p phantom-launcher
 
-      - name: Verify Windows DLL PE exports (GetPluginFactory & clap_entry)
+      - name: Build Phantom Vox (release, Windows)
+        if: matrix.os == 'windows-latest'
+        run: cargo build --release -p phantom-vox
+
+      - name: Verify Windows plugin DLL PE exports (GetPluginFactory & clap_entry)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
@@ -87,32 +91,33 @@ jobs:
           @'
           import pathlib, struct, sys
 
-          data = pathlib.Path("target/release/phantom_eq.dll").read_bytes()
-          pe = struct.unpack_from("<I", data, 0x3C)[0]
-          assert data[pe:pe + 4] == b"PE\x00\x00", "Invalid PE signature"
-          num_sec = struct.unpack_from("<H", data, pe + 6)[0]
-          opt_sz = struct.unpack_from("<H", data, pe + 20)[0]
-          opt = pe + 24
-          magic = struct.unpack_from("<H", data, opt)[0]
-          exp_rva = struct.unpack_from("<I", data, opt + (112 if magic == 0x20B else 96))[0]
-          assert exp_rva != 0, "Missing PE export directory"
-          secs = [struct.unpack_from("<IIII", data, opt + opt_sz + i * 40 + 8) for i in range(num_sec)]
-          def rva_to_off(rva):
-              for vs, va, rsz, raw in secs:
-                  if va <= rva < va + max(vs, rsz):
-                      return raw + (rva - va)
-              raise ValueError(f"Unmapped RVA: {rva:#x}")
-          ed = rva_to_off(exp_rva)
-          num_names = struct.unpack_from("<I", data, ed + 24)[0]
-          names_off = rva_to_off(struct.unpack_from("<I", data, ed + 32)[0])
-          exports = []
-          for i in range(num_names):
-              off = rva_to_off(struct.unpack_from("<I", data, names_off + i * 4)[0])
-              exports.append(data[off:data.index(0, off)].decode("ascii"))
-          print("Verified PE exports:", exports)
-          missing = [s for s in ("GetPluginFactory", "clap_entry") if s not in exports]
-          if missing:
-              sys.exit(f"Missing required PE exports: {missing}")
+          for dll in ("phantom_eq.dll", "phantom_vox.dll"):
+              data = pathlib.Path("target/release", dll).read_bytes()
+              pe = struct.unpack_from("<I", data, 0x3C)[0]
+              assert data[pe:pe + 4] == b"PE\x00\x00", "Invalid PE signature"
+              num_sec = struct.unpack_from("<H", data, pe + 6)[0]
+              opt_sz = struct.unpack_from("<H", data, pe + 20)[0]
+              opt = pe + 24
+              magic = struct.unpack_from("<H", data, opt)[0]
+              exp_rva = struct.unpack_from("<I", data, opt + (112 if magic == 0x20B else 96))[0]
+              assert exp_rva != 0, "Missing PE export directory"
+              secs = [struct.unpack_from("<IIII", data, opt + opt_sz + i * 40 + 8) for i in range(num_sec)]
+              def rva_to_off(rva):
+                  for vs, va, rsz, raw in secs:
+                      if va <= rva < va + max(vs, rsz):
+                          return raw + (rva - va)
+                  raise ValueError(f"Unmapped RVA: {rva:#x}")
+              ed = rva_to_off(exp_rva)
+              num_names = struct.unpack_from("<I", data, ed + 24)[0]
+              names_off = rva_to_off(struct.unpack_from("<I", data, ed + 32)[0])
+              exports = []
+              for i in range(num_names):
+                  off = rva_to_off(struct.unpack_from("<I", data, names_off + i * 4)[0])
+                  exports.append(data[off:data.index(0, off)].decode("ascii"))
+              print(f"Verified PE exports of {dll}:", exports)
+              missing = [s for s in ("GetPluginFactory", "clap_entry") if s not in exports]
+              if missing:
+                  sys.exit(f"{dll} is missing required PE exports: {missing}")
           '@ | python -
 
       - name: Package Windows release archive
@@ -122,12 +127,17 @@ jobs:
           $ErrorActionPreference = "Stop"
           $version = "${{ steps.meta.outputs.version }}"
           $stage = "release-stage/phantom-dsp-suite-$version-windows-x86_64"
-          $vst3Dir = "$stage/dist/windows/vst3/Phantom EQ.vst3/Contents/x86_64-win"
           $clapDir = "$stage/dist/windows/clap"
+          $plugins = [ordered]@{ "phantom_eq" = "Phantom EQ"; "phantom_vox" = "Phantom Vox" }
 
-          New-Item -ItemType Directory -Force -Path $vst3Dir, $clapDir | Out-Null
-          Copy-Item "target/release/phantom_eq.dll" "$vst3Dir/Phantom EQ.vst3"
-          Copy-Item "target/release/phantom_eq.dll" "$clapDir/Phantom EQ.clap"
+          New-Item -ItemType Directory -Force -Path $clapDir | Out-Null
+          foreach ($lib in $plugins.Keys) {
+            $name = $plugins[$lib]
+            $vst3Dir = "$stage/dist/windows/vst3/$name.vst3/Contents/x86_64-win"
+            New-Item -ItemType Directory -Force -Path $vst3Dir | Out-Null
+            Copy-Item "target/release/$lib.dll" "$vst3Dir/$name.vst3"
+            Copy-Item "target/release/$lib.dll" "$clapDir/$name.clap"
+          }
           Copy-Item "target/release/phantom-launcher.exe" "$stage/phantom-launcher.exe"
           Copy-Item "install_to_cubase.ps1", "install_to_cubase.bat", "README.md", "LICENSE-MIT", "LICENSE-APACHE" "$stage/"
 
