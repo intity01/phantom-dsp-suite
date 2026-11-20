@@ -64,6 +64,10 @@ fn parse_musical_note(trimmed: &str) -> Option<f32> {
 
 /// Parses a frequency in Hz (supporting `Hz`, `k`, `kHz` suffixes, clamped to `10.0..=30000.0`)
 /// or a case-insensitive 12-TET musical note (`A4 = 440.0 Hz`, `C#3`, `Db4`, `F#2`, `Bb5`, `B-1`).
+/// Hover help shown on every editable knob.
+pub const KNOB_HELP: &str = "Drag up/down to adjust · Shift for fine · Scroll to nudge
+\n                         Double-click to reset · Click the value to type it";
+
 pub fn parse_freq_or_note(text: &str) -> Option<f32> {
     let trimmed = text.trim();
     (!trimmed.is_empty())
