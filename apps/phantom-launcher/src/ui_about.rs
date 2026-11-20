@@ -2,9 +2,11 @@
 
 use crate::brand::BrandAssets;
 use crate::paths::host_dist_os_dir;
-use crate::theme::{ACCENT, ACCENT_SOFT, FILL_1, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY};
 use crate::ui_settings::{group_head, setting_row};
 use eframe::egui::{self, CornerRadius, FontId, Margin, RichText, Ui};
+use phantom_kit::prelude::{
+    ACCENT, ACCENT_SOFT, FILL_1, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
+};
 
 pub fn render_about_page(ui: &mut Ui, brand: &BrandAssets) {
     egui::ScrollArea::vertical()

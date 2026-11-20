@@ -2,7 +2,6 @@
 
 use crate::app::PhantomLauncherApp;
 use crate::app_actions::{execute_install, execute_uninstall, ActionOutcome};
-use crate::brand::BrandAssets;
 use crate::discovery::scan_plugin;
 use crate::hosts::{detect_hosts, running_hosts_for_plugin};
 use crate::installer::InstallOptions;
@@ -12,18 +11,18 @@ use crate::paths::{
 };
 use crate::platform::utc_hms_now;
 use crate::store::{load_settings, save_settings, PersistedSettings};
-use crate::theme::apply_suite_theme;
 use crate::ui_art::ArtCache;
 use crate::ui_inspector::{ConfirmAction, PendingConfirm};
 use crate::ui_log::{LogEntry, LogLevel};
 use crate::ui_sidebar::{AppView, BrowseScope};
 use eframe::egui::Id;
+use phantom_kit::prelude::apply_theme;
 use std::collections::HashMap;
 use std::time::Instant;
 
 impl PhantomLauncherApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        apply_suite_theme(&cc.egui_ctx);
+        apply_theme(&cc.egui_ctx);
         let saved = load_settings();
         let hosts = detect_hosts();
         let target_host_id = hosts.iter().find(|h| h.installed).map(|h| h.id);
@@ -54,7 +53,7 @@ impl PhantomLauncherApp {
             target_host_id,
             pending_confirm: None,
             logs: Vec::new(),
-            brand: BrandAssets::load(&cc.egui_ctx),
+            brand: crate::brand::load_brand(),
             art_cache: ArtCache::new(&cc.egui_ctx),
             last_grid_cols: 3,
             search_id: Id::new("phantom_search_input"),

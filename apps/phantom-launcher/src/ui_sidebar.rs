@@ -1,11 +1,11 @@
 //! Left macOS-inspired blended navigation sidebar with brand mark, scopes, and privacy badge.
 
 use crate::brand::BrandAssets;
-use crate::theme::{
+use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Pos2, Sense, Ui, Vec2};
+use phantom_kit::prelude::{paint_icon, show_icon, IconName};
+use phantom_kit::prelude::{
     ACCENT, ACCENT_TEXT, FILL_1, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
 };
-use crate::ui_icons::{draw_icon, icon_widget, IconName};
-use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Pos2, Sense, Ui, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppView {
@@ -162,7 +162,7 @@ pub fn render_sidebar(
     ui.add_space(10.0);
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        icon_widget(ui, IconName::Shield, 15.0, GREEN);
+        show_icon(ui, IconName::Shield, 15.0, GREEN);
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             ui.label(
@@ -209,7 +209,7 @@ fn nav_row(
         } else if resp.hovered() {
             p.rect_filled(rect, CornerRadius::same(8), FILL_1);
         }
-        draw_icon(
+        paint_icon(
             p,
             Pos2::new(rect.left() + 18.0, rect.center().y),
             16.5,

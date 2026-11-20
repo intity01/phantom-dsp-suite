@@ -8,9 +8,6 @@ use crate::installer::InstallOptions;
 use crate::manifest::{find_plugin, github_releases_url, BrowseGroup, AVAILABLE_PLUGINS};
 use crate::paths::InstallScope;
 use crate::platform::open_url;
-use crate::theme::{
-    paint_content_shell, paint_window_backdrop, BG_SURFACE, PANE_RADIUS, SHELL_GAP,
-};
 use crate::ui_about::render_about_page;
 use crate::ui_art::ArtCache;
 use crate::ui_grid::render_browse_grid;
@@ -20,6 +17,7 @@ use crate::ui_settings::render_settings_page;
 use crate::ui_sidebar::{render_sidebar, AppView, BrowseScope, SidebarCounts};
 use crate::ui_toolbar::render_toolbar;
 use eframe::egui::{self, CornerRadius, Id, Margin};
+use phantom_kit::prelude::{paint_backdrop, paint_shell, BG_SURFACE, PANE_RADIUS, SHELL_GAP};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -53,8 +51,8 @@ pub struct PhantomLauncherApp {
 
 impl eframe::App for PhantomLauncherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        paint_window_backdrop(ctx);
-        paint_content_shell(ctx, SIDEBAR_W, TITLEBAR_H, OUTER_INSET);
+        paint_backdrop(ctx);
+        paint_shell(ctx, SIDEBAR_W, TITLEBAR_H, OUTER_INSET);
         let visible = self.visible_plugins();
         self.handle_shortcuts(ctx, &visible);
 

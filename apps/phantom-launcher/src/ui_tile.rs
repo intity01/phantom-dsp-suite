@@ -4,16 +4,16 @@ use crate::discovery::InstallScanResult;
 use crate::hosts::HostInfo;
 use crate::integrity::format_file_size;
 use crate::manifest::{PluginManifest, PluginStatus};
-use crate::theme::{
-    capsule_button, ACCENT, ACCENT_TEXT, BG_CARD, BG_CARD_HOVER, BG_CARD_SELECTED, GREEN, ORANGE,
-    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
-};
 use crate::ui_art::ArtCache;
 use crate::ui_grid::GridEvents;
-use crate::ui_icons::{icon_widget, IconName};
 use eframe::egui::{
     self, CornerRadius, FontId, Margin, RichText, Sense, Stroke, StrokeKind, Ui, Vec2,
 };
+use phantom_kit::prelude::{
+    capsule_button, ACCENT, ACCENT_TEXT, BG_CARD, BG_CARD_HOVER, BG_CARD_SELECTED, GREEN, ORANGE,
+    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
+};
+use phantom_kit::prelude::{show_icon, IconName};
 
 #[allow(clippy::too_many_arguments)]
 pub fn render_tile(
@@ -158,7 +158,7 @@ fn tile_status_line(
                         .color(ACCENT_TEXT),
                 );
             } else if s.is_any_installed() {
-                icon_widget(ui, IconName::Check, 12.0, GREEN);
+                show_icon(ui, IconName::Check, 12.0, GREEN);
                 ui.label(
                     RichText::new("Installed")
                         .font(FontId::proportional(11.5))

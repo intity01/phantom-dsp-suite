@@ -1,10 +1,10 @@
 //! Foreground drag-and-drop overlay and floating toast notification capsule.
 
-use crate::theme::{ACCENT, ACCENT_TEXT, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY};
-use crate::ui_icons::{icon_widget, IconName};
 use eframe::egui::{
     self, Align2, Color32, CornerRadius, FontId, Id, Margin, Order, RichText, Stroke,
 };
+use phantom_kit::prelude::{show_icon, IconName};
+use phantom_kit::prelude::{ACCENT, ACCENT_TEXT, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY};
 
 pub fn render_drop_overlay(ctx: &egui::Context) {
     let screen = ctx.screen_rect();
@@ -26,7 +26,7 @@ pub fn render_drop_overlay(ctx: &egui::Context) {
                     .inner_margin(Margin::same(36))
                     .show(ui, |ui| {
                         ui.vertical_centered(|ui| {
-                            icon_widget(ui, IconName::Zip, 34.0, ACCENT_TEXT);
+                            show_icon(ui, IconName::Zip, 34.0, ACCENT_TEXT);
                             ui.add_space(8.0);
                             ui.label(
                                 RichText::new("Drop to install")

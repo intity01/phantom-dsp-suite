@@ -114,6 +114,21 @@ RUSTFLAGS="-C link-arg=$(pwd)/plugins/phantom-eq/exports.def" \
 cargo zigbuild --target x86_64-pc-windows-gnu -p phantom-launcher --release
 ```
 
+### Working on the Shared UI Kit (`phantom-kit`)
+
+The launcher's look comes from [`phantom-kit`](https://github.com/intity01/phantom-kit), which lives in its own repo. The launcher depends on it by git URL, and `Cargo.lock` pins the exact commit that CI builds.
+
+To try kit changes in the launcher before you push them:
+
+1. Clone the kit next to this repo, so it sits at `../phantom-kit`.
+2. Add `.cargo/config.toml` here with this line (the file is gitignored):
+
+   ```toml
+   paths = ["../phantom-kit"]
+   ```
+
+Builds then use your local kit checkout, and `Cargo.lock` stays unchanged. When the kit change is pushed, run `cargo update -p phantom-kit` (with the override file moved aside) to pin the new commit.
+
 ---
 
 ## Commit Conventions

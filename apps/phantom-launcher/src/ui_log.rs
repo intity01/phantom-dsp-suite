@@ -1,10 +1,10 @@
 //! Activity & SHA-256 Verification Log console view inside the center surface.
 
-use crate::theme::{
+use eframe::egui::{self, CornerRadius, FontId, Margin, RichText, Stroke};
+use phantom_kit::prelude::{
     quiet_button, BORDER_SUBTLE, FILL_1, GREEN, ORANGE, RED, TEXT_PRIMARY, TEXT_SECONDARY,
     TEXT_TERTIARY,
 };
-use eframe::egui::{self, CornerRadius, FontId, Margin, RichText, Stroke};
 
 #[derive(Clone, Copy)]
 pub enum LogLevel {
