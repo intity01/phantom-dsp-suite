@@ -204,52 +204,56 @@ fn draw_polar_stage(
 
 pub fn draw_field_card(ui: &mut Ui, size: Vec2, p: &FieldViewParams, snap: &VoxTelemetrySnapshot) {
     let time_s = ui.input(|i| i.time);
-    egui::Frame::NONE
-        .fill(BG_CARD)
-        .stroke(Stroke::new(
-            1.0_f32,
-            Color32::from_rgba_unmultiplied(255, 255, 255, 22),
-        ))
-        .corner_radius(CornerRadius::same(8))
-        .inner_margin(Margin::same(10))
-        .show(ui, |ui| {
-            ui.set_min_size(Vec2::new(
-                (size.x - 20.0).max(120.0),
-                (size.y - 20.0).max(120.0),
-            ));
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("STEREO VOCAL FIELD")
-                        .font(FontId::proportional(10.0))
-                        .strong()
-                        .color(TEXT_BRIGHT),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let badge = if p.mono_check {
-                        ("MONO CHECK", ACCENT_AMBER)
-                    } else if p.mode == VoxModeParam::LiveAlign {
-                        ("ALIGN PASS", ACCENT_GREEN)
-                    } else if p.voices == VoicesParam::FourVoices {
-                        ("4 VOICES", ACCENT_PURPLE)
-                    } else {
-                        ("2 VOICES", ACCENT_CYAN)
-                    };
+    // The caller lays cards out in a horizontal row, and a frame inherits its parent's
+    // layout. Stack the card's contents top-down explicitly.
+    ui.vertical(|ui| {
+        egui::Frame::NONE
+            .fill(BG_CARD)
+            .stroke(Stroke::new(
+                1.0_f32,
+                Color32::from_rgba_unmultiplied(255, 255, 255, 22),
+            ))
+            .corner_radius(CornerRadius::same(8))
+            .inner_margin(Margin::same(10))
+            .show(ui, |ui| {
+                // Pin the width: the right-to-left badge row below would otherwise grow the card
+                // to the whole window and push the other card out of view.
+                ui.set_width((size.x - 22.0).max(120.0)); // 2 x (10 margin + 1 stroke)
+                ui.set_min_height((size.y - 22.0).max(120.0));
+                ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(badge.0)
-                            .font(FontId::proportional(9.0))
+                        RichText::new("STEREO VOCAL FIELD")
+                            .font(FontId::proportional(10.0))
                             .strong()
-                            .color(badge.1),
+                            .color(TEXT_BRIGHT),
                     );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let badge = if p.mono_check {
+                            ("MONO CHECK", ACCENT_AMBER)
+                        } else if p.mode == VoxModeParam::LiveAlign {
+                            ("ALIGN PASS", ACCENT_GREEN)
+                        } else if p.voices == VoicesParam::FourVoices {
+                            ("4 VOICES", ACCENT_PURPLE)
+                        } else {
+                            ("2 VOICES", ACCENT_CYAN)
+                        };
+                        ui.label(
+                            RichText::new(badge.0)
+                                .font(FontId::proportional(9.0))
+                                .strong()
+                                .color(badge.1),
+                        );
+                    });
                 });
+
+                ui.add_space(4.0);
+                let polar_h = (ui.available_height() - 40.0).max(120.0);
+                let (polar_rect, _) = ui
+                    .allocate_exact_size(Vec2::new(ui.available_width(), polar_h), Sense::hover());
+                draw_polar_stage(ui.painter(), polar_rect, p, snap, time_s);
+
+                ui.add_space(6.0);
+                draw_phase_correlation_bar(ui, snap.phase_corr);
             });
-
-            ui.add_space(4.0);
-            let polar_h = (ui.available_height() - 40.0).max(120.0);
-            let (polar_rect, _) =
-                ui.allocate_exact_size(Vec2::new(ui.available_width(), polar_h), Sense::hover());
-            draw_polar_stage(ui.painter(), polar_rect, p, snap, time_s);
-
-            ui.add_space(6.0);
-            draw_phase_correlation_bar(ui, snap.phase_corr);
-        });
+    });
 }

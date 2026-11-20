@@ -103,6 +103,16 @@ cargo check --workspace --all-targets
 cargo fmt --all -- --check
 ```
 
+### Packaging Plugins for the Launcher on Windows
+
+The launcher installs plugins from `dist/windows/` (gitignored). To build Phantom EQ, Phantom Vox and the launcher and lay them out there:
+
+```powershell
+.\package_windows.ps1
+```
+
+Add `-Only phantom-vox` to package one plugin and leave the others untouched, or `-SkipBuild` to repackage existing `target/release` outputs.
+
 ### Cross-Compiling Windows VST3/CLAP & Launcher from Linux
 
 ```bash

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Phantom Vox Windows packaging**: `package_windows.ps1` builds the Windows plugins and lays them out under `dist/windows/` (VST3 bundle + CLAP), so the launcher can install Phantom Vox. The Windows release archive now ships Phantom Vox too, and its DLL exports are verified alongside Phantom EQ.
+
 ### Planned
 - **Phantom Comp** — Mastering & bus compressor with visual transfer curve and sidechain filtering.
 - **Phantom Limiter** — True Peak brickwall mastering limiter with EBU R128 loudness metering.

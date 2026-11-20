@@ -38,16 +38,16 @@ pub fn decode_png_rgba(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
 /// Renders the cached 64x64 glass orb icon texture at `size x size` points.
 pub fn draw_phantom_orb_icon(ui: &mut Ui, size: f32) {
     let key = Id::new("phantom_ui_orb_tex_64");
-    let tex = ui.ctx().data_mut(|d| {
-        if let Some(existing) = d.get_temp::<TextureHandle>(key) {
-            return existing;
-        }
+    // Never call back into the context (e.g. `load_texture`) inside `data_mut`: the context
+    // lock is not re-entrant, so that deadlocks the first frame and leaves a blank window.
+    let cached = ui.ctx().data(|d| d.get_temp::<TextureHandle>(key));
+    let tex = cached.unwrap_or_else(|| {
         let (rgba, w, h) = decode_png_rgba(ORB_ICON_64).unwrap_or_else(|| (vec![0, 0, 0, 0], 1, 1));
         let image = ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
         let handle = ui
             .ctx()
             .load_texture("phantom_ui_orb_64", image, TextureOptions::LINEAR);
-        d.insert_temp(key, handle.clone());
+        ui.ctx().data_mut(|d| d.insert_temp(key, handle.clone()));
         handle
     });
     ui.add(egui::Image::new((tex.id(), Vec2::splat(size))).fit_to_exact_size(Vec2::splat(size)));
