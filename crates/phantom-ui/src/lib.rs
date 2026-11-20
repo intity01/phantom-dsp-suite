@@ -1,12 +1,14 @@
 //! Phantom UI — Modular Audio Graphics & Design System
 //! Provides reusable views, themes, Lucide vector icons, and audio widgets for Phantom DSP Suite.
 
+pub mod brand;
 pub mod filter_icons;
 pub mod icons;
 pub mod theme;
 pub mod views;
 pub mod widgets;
 
+pub use brand::{decode_png_rgba, draw_phantom_orb_icon, draw_phantom_wordmark};
 pub use icons::{
     draw_chip_icon, draw_close_icon, draw_filter_shape_icon, draw_headphones_icon, draw_lock_icon,
     draw_phase_icon, draw_power_icon,
@@ -36,9 +38,11 @@ pub use widgets::band_inspector::{
     draw_band_inspector, draw_empty_band_inspector, BandInspectorData, BandInspectorEvents,
 };
 pub use widgets::inspector_controls::{draw_icon_button, parse_audio_number};
+pub use widgets::knob_edit::{parse_freq_or_note, KnobEditKind};
 pub use widgets::master_bar::{draw_master_bar, MasterBarData, MasterBarEvents};
 pub use widgets::output_meter::{draw_output_meter, OutputMeterData, OUTPUT_METER_WIDTH};
 pub use widgets::rotary_knob::{
-    draw_compact_knob, draw_rotary_knob, freq_to_norm, linear_to_norm, norm_to_freq,
-    norm_to_linear, norm_to_q, q_to_norm, RotaryKnobConfig,
+    draw_compact_knob, draw_editable_compact_knob, draw_editable_rotary_knob, draw_rotary_knob,
+    freq_to_norm, linear_to_norm, norm_to_freq, norm_to_linear, norm_to_q, q_to_norm,
+    RotaryKnobConfig,
 };

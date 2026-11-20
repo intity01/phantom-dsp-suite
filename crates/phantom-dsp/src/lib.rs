@@ -12,6 +12,7 @@ pub mod metering;
 pub mod oversampling;
 pub mod routing;
 pub mod slope_filter;
+pub mod smoothing;
 pub mod spectral_dynamics;
 pub mod spectrum;
 
@@ -34,6 +35,9 @@ pub use metering::{
 pub use oversampling::{OversampleFactor, Oversampler2x, Oversampler4x};
 pub use routing::{decode_mid_side, encode_mid_side, ChannelTarget};
 pub use slope_filter::{CascadedCoeffs, CascadedStereoFilter, FilterSlope, MAX_CASCADE_STAGES};
+pub use smoothing::{
+    BandParamSmoother, BypassCrossfade, LatencyBypassDelay, OnePoleSmoother, SMOOTH_SUBBLOCK,
+};
 pub use spectral_dynamics::{SpectralBandProcessor, NUM_SPECTRAL_SUBBANDS};
 pub use spectrum::{
     display_bin_freq, SharedSpectrum, SpectrumData, SpectrumProcessor, DEFAULT_TILT_DB_PER_OCT,

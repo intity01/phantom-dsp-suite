@@ -169,6 +169,7 @@ pub struct EqPresetSnapshot {
     pub character: CharacterParam,
     pub auto_gain: bool,
     pub output_gain_db: f32,
+    pub gain_scale_pct: f32,
     pub phase_invert: bool,
     pub bands: [BandSnapshotData; NUM_BANDS],
 }
@@ -185,10 +186,11 @@ impl EqPresetSnapshot {
             name: name.into(),
             category,
             mode: ProcessingModeParam::ZeroLatency,
-            oversampling: OversampleParam::X2,
+            oversampling: OversampleParam::Off,
             character: CharacterParam::Clean,
             auto_gain: false,
             output_gain_db: 0.0,
+            gain_scale_pct: 100.0,
             phase_invert: false,
             bands: [BandSnapshotData::default(); NUM_BANDS],
         }
@@ -225,6 +227,7 @@ impl EqPresetSnapshot {
             character: r.read(&params.character),
             auto_gain: r.read(&params.auto_gain),
             output_gain_db: r.read(&params.output_gain),
+            gain_scale_pct: r.read(&params.gain_scale),
             phase_invert: r.read(&params.phase_invert),
             bands: std::array::from_fn(|i| BandSnapshotData::capture_with(&params.bands[i], r)),
         }
@@ -236,6 +239,7 @@ impl EqPresetSnapshot {
         setter.set_once(&params.character, self.character);
         setter.set_once(&params.auto_gain, self.auto_gain);
         setter.set_once(&params.output_gain, self.output_gain_db);
+        setter.set_once(&params.gain_scale, self.gain_scale_pct);
         setter.set_once(&params.phase_invert, self.phase_invert);
         for (i, band_snap) in self.bands.iter().enumerate() {
             band_snap.apply_to(&params.bands[i], setter);
@@ -248,6 +252,7 @@ impl EqPresetSnapshot {
             && self.character == other.character
             && self.auto_gain == other.auto_gain
             && f_eq(self.output_gain_db, other.output_gain_db)
+            && f_eq(self.gain_scale_pct, other.gain_scale_pct)
             && self.phase_invert == other.phase_invert
             && self
                 .bands

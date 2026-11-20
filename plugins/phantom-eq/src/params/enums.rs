@@ -36,9 +36,9 @@ pub enum ProcessingModeParam {
 
 #[derive(Enum, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OversamplingParam {
+    #[default]
     #[name = "Off"]
     Off,
-    #[default]
     #[name = "2x HQ"]
     X2,
     #[name = "4x HQ"]

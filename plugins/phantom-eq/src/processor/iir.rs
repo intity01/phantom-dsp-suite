@@ -1,12 +1,14 @@
-//! Zero-Latency & Natural-Phase IIR Processing Core (with 2x/4x Polyphase OS + Dynamic & Spectral EQ)
-//! Strictly zero heap allocations: all active band metadata lives in fixed stack arrays.
+//! Zero-Latency & Natural-Phase IIR Band Preparation & 16-Sample Smoother Sub-Block Updates
+//! Strictly zero heap allocations: active band metadata lives in fixed stack arrays.
 
-use crate::dsp_state::{process_cascaded_placement, process_spectral_placement, SharedBandGr};
+use crate::dsp_state::{
+    scale_band_dyn_range, scale_band_gain, shape_uses_gain_scale, SharedBandGr,
+};
 use crate::live_mirror::ParamRead;
 use crate::params::{PhantomEqParams, NUM_BANDS};
 use phantom_dsp::{
-    CascadedCoeffs, CascadedStereoFilter, ChannelTarget, DynamicDetector, FilterSlope, FilterType,
-    OversampleFactor, Oversampler2x, Oversampler4x, SpectralBandProcessor,
+    BandParamSmoother, CascadedCoeffs, CascadedStereoFilter, ChannelTarget, DynamicDetector,
+    FilterSlope, FilterType, OnePoleSmoother, SpectralBandProcessor,
 };
 
 #[derive(Clone, Copy)]
@@ -18,6 +20,8 @@ pub struct ActiveBand {
     pub freq: f32,
     pub gain: f32,
     pub q: f32,
+    pub raw_dyn_range: f32,
+    pub raw_spectral_dyn: bool,
     pub dyn_range: f32,
     pub dyn_thresh: f32,
     pub dyn_auto: bool,
@@ -37,6 +41,8 @@ impl Default for ActiveBand {
             freq: 1000.0,
             gain: 0.0,
             q: 1.0,
+            raw_dyn_range: 0.0,
+            raw_spectral_dyn: false,
             dyn_range: 0.0,
             dyn_thresh: -18.0,
             dyn_auto: true,
@@ -48,7 +54,7 @@ impl Default for ActiveBand {
     }
 }
 
-/// Prepares active (`used && enabled`) bands into a stack array and updates base filter coeffs.
+/// Prepares active (`used && enabled`) bands into a stack array and updates smoother targets.
 #[allow(clippy::too_many_arguments)]
 pub fn prepare_iir_bands(
     params: &PhantomEqParams,
@@ -56,27 +62,53 @@ pub fn prepare_iir_bands(
     filters: &mut [CascadedStereoFilter; NUM_BANDS],
     detectors: &mut [DynamicDetector; NUM_BANDS],
     spectral: &mut [SpectralBandProcessor; NUM_BANDS],
+    smoothers: &mut [BandParamSmoother; NUM_BANDS],
+    band_was_active: &mut [bool; NUM_BANDS],
     shared_gr: &SharedBandGr,
     effective_sr: f32,
     natural_phase: bool,
+    cur_gain_scale: f32,
+    snap_initial: bool,
 ) -> ([ActiveBand; NUM_BANDS], usize) {
     let mut active = [ActiveBand::default(); NUM_BANDS];
     let mut count = 0usize;
 
     for (i, band) in params.bands.iter().enumerate() {
         if !(live.read(&band.used) && live.read(&band.enabled)) {
+            band_was_active[i] = false;
             shared_gr.store(i, 0.0);
             continue;
         }
         let ftype: FilterType = live.read(&band.filter_type).into();
         let slope: FilterSlope = live.read(&band.slope).into();
         let placement: ChannelTarget = live.read(&band.placement).into();
-        let freq = live.read(&band.frequency);
-        let gain = live.read(&band.gain);
-        let q = live.read(&band.q);
-        let dyn_range = live.read(&band.dynamic_range);
+        let t_freq = live.read(&band.frequency);
+        let t_gain = live.read(&band.gain);
+        let t_q = live.read(&band.q);
+
+        if snap_initial {
+            smoothers[i].reset(t_freq, t_gain, t_q);
+            band_was_active[i] = true;
+        } else if !band_was_active[i] {
+            filters[i].reset();
+            if shape_uses_gain_scale(ftype) {
+                smoothers[i].reset(t_freq, 0.0, t_q);
+                smoothers[i].set_targets(t_freq, t_gain, t_q);
+            } else {
+                smoothers[i].reset(t_freq, t_gain, t_q);
+            }
+            band_was_active[i] = true;
+        } else {
+            smoothers[i].set_targets(t_freq, t_gain, t_q);
+        }
+
+        let (freq, raw_gain, q) = smoothers[i].current();
+        let gain = scale_band_gain(ftype, raw_gain, cur_gain_scale);
+        let raw_dyn_range = live.read(&band.dynamic_range);
+        let raw_spectral_dyn = live.read(&band.spectral_dynamics);
+        let dyn_range = scale_band_dyn_range(ftype, raw_dyn_range, cur_gain_scale);
         let has_dynamics = dyn_range.abs() > 0.01;
-        let spectral_dyn = live.read(&band.spectral_dynamics) && dyn_range.abs() > 0.05;
+        let spectral_dyn = raw_spectral_dyn && dyn_range.abs() > 0.05;
 
         let coeffs =
             CascadedCoeffs::calculate(ftype, slope, effective_sr, freq, gain, q, natural_phase);
@@ -103,6 +135,8 @@ pub fn prepare_iir_bands(
             freq,
             gain,
             q,
+            raw_dyn_range,
+            raw_spectral_dyn,
             dyn_range,
             dyn_thresh: live.read(&band.dynamic_threshold),
             dyn_auto: live.read(&band.dynamic_auto_thresh),
@@ -117,149 +151,63 @@ pub fn prepare_iir_bands(
     (active, count)
 }
 
-/// Processes a single stereo sample through the active 24-band IIR cascade with oversampling.
+/// Advances per-band smoothers and global gain-scale smoother for one `SMOOTH_SUBBLOCK` stride.
 #[allow(clippy::too_many_arguments)]
-#[inline(always)]
-pub fn process_iir_sample_os(
+#[inline]
+pub fn advance_iir_subblock(
     active: &mut [ActiveBand],
     filters: &mut [CascadedStereoFilter; NUM_BANDS],
     detectors: &mut [DynamicDetector; NUM_BANDS],
-    spectral: &mut [SpectralBandProcessor; NUM_BANDS],
-    os2: &mut Oversampler2x,
-    os4: &mut Oversampler4x,
-    os_factor: OversampleFactor,
+    smoothers: &mut [BandParamSmoother; NUM_BANDS],
+    gain_scale_smoother: &mut OnePoleSmoother,
+    sub_n: usize,
     effective_sr: f32,
     natural_phase: bool,
-    l: f32,
-    r: f32,
-    sc_l: f32,
-    sc_r: f32,
-) -> (f32, f32) {
-    if active.is_empty() {
-        return (l, r);
+) {
+    let gs_moving = !gain_scale_smoother.is_settled(1e-4);
+    if gs_moving {
+        gain_scale_smoother.skip(sub_n);
     }
-    match os_factor {
-        OversampleFactor::Off => process_one_pair(
-            active,
-            filters,
-            detectors,
-            spectral,
-            effective_sr,
-            natural_phase,
-            l,
-            r,
-            sc_l,
-            sc_r,
-        ),
-        OversampleFactor::X2 => {
-            let [s0, s1] = os2.upsample_2x(l, r);
-            let o0 = process_one_pair(
-                active,
-                filters,
-                detectors,
-                spectral,
-                effective_sr,
-                natural_phase,
-                s0.0,
-                s0.1,
-                sc_l,
-                sc_r,
-            );
-            let o1 = process_one_pair(
-                active,
-                filters,
-                detectors,
-                spectral,
-                effective_sr,
-                natural_phase,
-                s1.0,
-                s1.1,
-                sc_l,
-                sc_r,
-            );
-            os2.downsample_2x(o0, o1)
-        }
-        OversampleFactor::X4 => {
-            let subs = os4.upsample_4x(l, r);
-            let mut outs = [(0.0_f32, 0.0_f32); 4];
-            for (dst, &(sl, sr_s)) in outs.iter_mut().zip(subs.iter()) {
-                *dst = process_one_pair(
-                    active,
-                    filters,
-                    detectors,
-                    spectral,
-                    effective_sr,
-                    natural_phase,
-                    sl,
-                    sr_s,
-                    sc_l,
-                    sc_r,
-                );
-            }
-            os4.downsample_4x(outs)
-        }
-    }
-}
+    let gs = gain_scale_smoother.current();
 
-#[allow(clippy::too_many_arguments)]
-#[inline(always)]
-fn process_one_pair(
-    active: &mut [ActiveBand],
-    filters: &mut [CascadedStereoFilter; NUM_BANDS],
-    detectors: &mut [DynamicDetector; NUM_BANDS],
-    spectral: &mut [SpectralBandProcessor; NUM_BANDS],
-    sr: f32,
-    natural_phase: bool,
-    mut l: f32,
-    mut r: f32,
-    sc_l: f32,
-    sc_r: f32,
-) -> (f32, f32) {
     for band in active.iter_mut() {
         let idx = band.index;
-        if band.spectral_dyn {
-            (l, r) = process_cascaded_placement(&mut filters[idx], band.placement, l, r);
-            (l, r) = process_spectral_placement(
-                &mut spectral[idx],
-                band.placement,
-                l,
-                r,
-                sr,
-                band.freq,
-                band.q,
-                band.dyn_thresh,
-                band.dyn_range,
-            );
+        let band_moving = !smoothers[idx].is_settled();
+        if !band_moving && !(gs_moving && shape_uses_gain_scale(band.ftype)) {
+            continue;
+        }
+        let (freq, raw_gain, q) = if band_moving {
+            smoothers[idx].advance_subblock(sub_n)
         } else {
-            if band.has_dynamics {
-                let dyn_offset = detectors[idx].compute_dynamic_gain_ext(
-                    l,
-                    r,
-                    sc_l,
-                    sc_r,
-                    band.dyn_ext_sc,
-                    band.dyn_thresh,
-                    band.dyn_auto,
-                    band.dyn_range,
-                );
-                if (dyn_offset - band.last_applied_dyn).abs() > 0.005 {
-                    let dyn_coeffs = CascadedCoeffs::calculate(
-                        band.ftype,
-                        band.slope,
-                        sr,
-                        band.freq,
-                        band.gain + dyn_offset,
-                        band.q,
-                        natural_phase,
-                    );
-                    filters[idx].set_coeffs(&dyn_coeffs);
-                    band.last_applied_dyn = dyn_offset;
-                }
-            }
-            (l, r) = process_cascaded_placement(&mut filters[idx], band.placement, l, r);
+            smoothers[idx].current()
+        };
+        band.freq = freq;
+        band.gain = scale_band_gain(band.ftype, raw_gain, gs);
+        band.q = q;
+        band.dyn_range = scale_band_dyn_range(band.ftype, band.raw_dyn_range, gs);
+        band.has_dynamics = band.dyn_range.abs() > 0.01;
+        band.spectral_dyn = band.raw_spectral_dyn && band.dyn_range.abs() > 0.05;
+
+        let eff_gain = band.gain
+            + if band.has_dynamics {
+                band.last_applied_dyn
+            } else {
+                0.0
+            };
+        let coeffs = CascadedCoeffs::calculate(
+            band.ftype,
+            band.slope,
+            effective_sr,
+            band.freq,
+            eff_gain,
+            band.q,
+            natural_phase,
+        );
+        filters[idx].set_coeffs(&coeffs);
+        if band.has_dynamics && !band.spectral_dyn {
+            detectors[idx].update_sidechain(effective_sr, band.freq, band.q);
         }
     }
-    (l, r)
 }
 
 /// Publishes the latest dynamic gain reduction telemetry for all active dynamic/spectral bands.

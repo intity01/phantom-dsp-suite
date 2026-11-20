@@ -6,10 +6,12 @@ use super::window_size::{apply_size_preset, preset_index_for_size, SIZE_PRESETS}
 use super::{match_panel, preset_bar, EditorShared, EditorState};
 use crate::live_mirror::LiveSetter;
 use crate::params::PhantomEqParams;
-use nih_plug_egui::egui::{self, Align, FontId, Layout, Margin, RichText, Sense, Ui, Vec2};
+use nih_plug_egui::egui::{
+    self, Align, CornerRadius, FontId, Layout, Margin, RichText, Sense, Stroke, Ui, Vec2,
+};
 use phantom_ui::{
-    draw_headphones_icon, draw_lock_icon, ACCENT_AMBER, ACCENT_CYAN, ACCENT_RED, BG_CARD,
-    TEXT_BRIGHT, TEXT_DIMMED, TEXT_MUTED,
+    draw_headphones_icon, draw_lock_icon, draw_phantom_orb_icon, draw_phantom_wordmark, with_alpha,
+    ACCENT_AMBER, ACCENT_CYAN, ACCENT_RED, BG_CARD, TEXT_BRIGHT, TEXT_DIMMED, TEXT_MUTED,
 };
 
 pub fn draw_header(
@@ -27,18 +29,21 @@ pub fn draw_header(
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 5.0;
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("PHANTOM")
-                        .font(FontId::proportional(13.5))
-                        .strong()
-                        .color(TEXT_BRIGHT),
-                );
-                ui.label(
-                    RichText::new("EQ")
-                        .font(FontId::proportional(13.5))
-                        .strong()
-                        .color(ACCENT_CYAN),
-                );
+                draw_phantom_orb_icon(ui, 20.0);
+                draw_phantom_wordmark(ui, 16.0, TEXT_BRIGHT, ACCENT_CYAN);
+                egui::Frame::NONE
+                    .fill(with_alpha(ACCENT_CYAN, 34))
+                    .stroke(Stroke::new(1.0_f32, with_alpha(ACCENT_CYAN, 95)))
+                    .corner_radius(CornerRadius::same(5))
+                    .inner_margin(Margin::symmetric(5, 1))
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new("EQ")
+                                .font(FontId::proportional(10.5))
+                                .strong()
+                                .color(ACCENT_CYAN),
+                        );
+                    });
                 ui.separator();
 
                 preset_bar::draw_preset_bar(ui, setter, params, state);

@@ -34,9 +34,9 @@ Phantom DSP Suite is structured as a modular Cargo workspace with strict separat
 
 ```mermaid
 flowchart TD
-    DSP["crates/phantom-dsp<br/>Pure Rust DSP Math<br/>Biquad • Linear Phase FIR • Dynamics • M/S • 2x OS • FFT"]
-    UI["crates/phantom-ui<br/>Dark Obsidian UI Toolkit<br/>Theme • Vector Icons • Spectrum & Curve Canvas"]
-    EQ["plugins/phantom-eq<br/>Phantom EQ (VST3 / CLAP)<br/>NIH-plug Adapter • Parameters • Modular Editor"]
+    DSP["crates/phantom-dsp<br/>Pure Rust DSP Math<br/>Biquad • Linear Phase FIR • Smoothing • Dynamics • M/S • OS • FFT"]
+    UI["crates/phantom-ui<br/>Dark Obsidian UI Toolkit<br/>Theme • Vector Icons • Editable Knobs • Spectrum & Curve Canvas"]
+    EQ["plugins/phantom-eq<br/>Phantom EQ (VST3 / CLAP)<br/>NIH-plug Adapter • Mono+Stereo • Live Mirror • Modular Editor"]
     LAUNCHER["apps/phantom-launcher<br/>Phantom Launcher (GUI & CLI)<br/>1-Click Offline Installer • SHA-256 Verification"]
 
     DSP --> UI
@@ -54,36 +54,41 @@ flowchart TD
 
 ---
 
-## Flagship Plugin: Phantom EQ
+## Flagship Plugin: Phantom EQ (`v0.1.0`)
 
 **Phantom EQ** (`v0.1.0`) is a clean-room 24-band dynamic & spectral parametric equalizer engineered for surgical mixing and transparent mastering:
 
-- **24 Fully Parametric Bands (Clean Pro-Q 4 Empty Startup)** — 10 filter shapes (Bell, Low Cut, High Cut, Low Shelf, High Shelf, Notch, Band Pass, Tilt Shelf, Flat Tilt, All-Pass) and 8 cascaded slopes (`6` to `96 dB/oct` + `Brickwall`) built on Transposed Direct Form II RBJ biquads.
-- **Triple Processing Engine**:
-  - **Zero Latency (Analog IIR)** — Instantaneous 0-sample latency for tracking and live mixing.
-  - **Natural Phase (Analog-Matched IIR + 2x/4x Polyphase Oversampling)** — Zero-latency Vicanek/Orfanidis Nyquist magnitude/phase matching with optional 2x/4x polyphase half-band IIR oversampling.
-  - **Linear Phase (Mastering FIR)** — 4095-tap odd Type-I symmetric Kaiser (β=7.5) FIR kernel inside an 8192-point zero-padded Overlap-Save FFT convolution engine (`HOP_SIZE = 1024`), exact buffer-size-invariant **3071-sample** latency (~64.0 ms @ 48 kHz) reported dynamically to the DAW via NIH-plug `set_latency_samples`, C1 raised-cosine click-free kernel crossfading, and zero heap allocations proven under test.
-- **Per-Band Stereo / Mid-Side / Left-Right Routing** — Sculpt Stereo, Mid, Side, Left, or Right independently per band in Zero Latency, Natural Phase, and Linear Phase modes.
-- **Advanced Dynamic EQ & Per-Band Spectral Dynamics** — Configurable Attack/Release ballistics, Auto-Threshold, External Sidechain support, soft-knee compression/expansion, live gain-reduction telemetry rings, and zero-latency 9-subband **Spectral Dynamics** selective resonance suppression.
-- **EQ Match, Spectrum Grab & Multi-Instance Collision Detection** — Reference vs. track 1/3-octave delta curve fitting (`EqMatchEngine` up to 12 parametric bands), interactive **Spectrum Grab** peak handles, and lock-free 16-slot **Multi-Instance Collision Registry** highlighting cross-track masking in real time.
-- **Character Saturation, Auto-Gain & EBU R128 LUFS Metering** — Subtle/Warm analog harmonic saturation, gated RMS Auto-Gain compensation, and ITU-R BS.1770-4 K-weighted Momentary & Short-Term LUFS + True Peak hold meters.
-- **Pro-Q 4+ Flagship Dark Obsidian Interface**:
-  - **Floating Band Popover HUD & Precision Rotary Knobs** — On-canvas floating HUD anchored to the selected node with 4 custom rotary knobs (`FREQ`, `GAIN`, `Q`, `DYN`), Lucide vector filter shape icons, slope/routing pills, Spectral Dynamics toggle, Headphone Solo audition, and `[HUD / DOCK]` layout switch.
-  - **Resizable Window, Piano Roll & Musical Note Snap** — Drag-resizable window (`860×500` min, `1100×640` default), interactive 20px `C1..C8` Piano Roll bar with live note + cents readout, and semitone note snapping (`[SNAP]` or `Ctrl`-drag).
-  - **Preset Browser, A/B Compare & 64-Step Undo/Redo** — 12 built-in Factory Presets + offline `.peq` User Presets, `<` / `>` quick stepping, `[A / B]` comparison slots with `[Copy]`, and 64-step Undo/Redo (`Ctrl+Z` / `Ctrl+Y`).
+- **24 Fully Parametric Bands (Clean Pro-Q 4 Empty Startup)** — 10 filter shapes (`Bell`, `Low Cut`, `High Cut`, `Low Shelf`, `High Shelf`, `Notch`, `Band Pass`, `Tilt Shelf`, `Flat Tilt`, `All Pass`) and 8 cascaded slopes (`6` to `96 dB/oct` + `Brickwall`) built on Transposed Direct Form II RBJ biquads.
+- **Triple Processing Engine (`Zero Latency + 1x` Low-CPU Default)**:
+  - **Zero Latency (Analog IIR)** — Default low-CPU `0`-sample latency mode (`1x` oversampling off by default) for tracking and high-track-count mixing, with `2x HQ` / `4x Mastering` polyphase half-band oversampling available on demand.
+  - **Natural Phase (Analog-Matched IIR)** — Zero-latency Vicanek/Orfanidis Nyquist magnitude & phase matching with selectable `1x / 2x / 4x` polyphase oversampling.
+  - **Linear Phase (Mastering FIR)** — 4095-tap odd Type-I symmetric Kaiser (β=7.5) FIR kernel inside an 8192-point zero-padded Overlap-Save FFT convolution engine (`HOP_SIZE = 1024`), exact buffer-size-invariant **3071-sample** latency (~64.0 ms @ 48 kHz) reported dynamically to the DAW via `set_latency_samples`, C1 raised-cosine click-free kernel crossfading, and zero heap allocations proven under test.
+- **Zero-Click Smoothing & 10 ms PDC-Aligned Bypass**:
+  - Per-band `BandParamSmoother` (`16`-sample sub-blocks, log frequency/Q + linear gain) and `OnePoleSmoother` for output gain and global Gain Scale eliminate zipper noise during automation and live drags.
+  - `BypassCrossfade` (`10 ms` wet/dry ramp) + `LatencyBypassDelay` (continuously aligned `3071`-sample delay line in Linear Phase mode) ensure click-free, timing-invariant DAW bypass with live meters and spectrum.
+- **Native Mono + Stereo Tracks & External Sidechain** — Declares both Stereo (`2->2` + 2-ch `Sidechain`) and Mono (`1->1` + 1-ch `Sidechain`) layouts, processing mono tracks via fixed 256-sample stack buffers with zero heap allocations.
+- **Global Gain Scale (`0%–200%`)** — DAW-automatable scaling of band gain, dynamic range, and visual EQ curves for gain-bearing shapes (`Bell`, `LowShelf`, `HighShelf`, `TiltShelf`, `FlatTilt`, `BandPass`) while keeping cuts, notch, and all-pass shapes intact.
+- **Per-Band Stereo / Mid-Side / Left-Right Routing & Dynamics** — Independent Stereo, Mid, Side, Left, or Right routing across all modes; soft-knee Dynamic EQ with Attack/Release/Auto-Threshold/External Sidechain, live GR telemetry rings, and zero-latency 9-subband **Spectral Dynamics**.
+- **EQ Match, Spectrum Grab & Multi-Instance Collision Detection** — Reference vs. track 1/3-octave curve fitting (`EqMatchEngine`, up to 12 bands), interactive **Spectrum Grab** peak handles, and lock-free 16-slot **Collision Registry** cross-track masking overlay.
+- **Character Saturation, Auto-Gain & EBU R128 LUFS Metering** — `Clean`, `Subtle Analog`, and `Warm Tube` saturation, gated RMS Auto-Gain compensation, and ITU-R BS.1770-4 K-weighted Momentary & Short-Term LUFS + True Peak meters.
+- **Minimal Pro-Q 4 Dark Obsidian Interface**:
+  - **Single-Row Header & Slim Bottom Strip** — Crisp, distraction-free layout with fixed proportional window presets (`S 960×560`, `M 1100×640`, `L 1260×720`, `XL 1420×800`) and lock-free `LiveParamMirror` (0 ms GUI updates even when DAW audio is stopped).
+  - **Floating Band HUD & Direct Keyboard Knob Typing** — Anchored `296×98 px` floating HUD with 4 rotary knobs (`FREQ`, `GAIN`, `Q`, `DYN`); click any knob readout to type values directly including 12-TET musical notes (`A4`, `C#3`, `Db4`, `2.5k`), or double-click the dial to reset.
+  - **Right-Click Context Menu & Precision Gestures** — Right-click any band node for Bypass, Solo, all 10 shapes, all 8 slopes, all 5 placements, Invert Gain, Dynamic (-4 dB) / Clear Dynamics, Spectral Dynamics, and Delete; middle-click any node for instant 1-click Bypass; hold `Shift + Drag` for `0.15x` fine mode; toggle Piano Roll (`C1..C8`) & `Snap` / `Ctrl`-drag semitone quantization.
+  - **Custom User Presets, A/B Compare & 64-Step Undo/Redo** — 12 built-in Factory Presets + named offline `.peq` User Presets (inline naming + `×` deletion), `<` / `>` quick stepping, `[A / B]` comparison slots with `[Copy]`, and 64-step Undo/Redo (`Ctrl+Z` / `Ctrl+Y`).
 - **100% Offline & Zero Telemetry** — Zero networking crates linked into the plugin binary.
 
 ---
 
 ## Suite Roadmap
 
-| Plugin              | Category    | Status      | Formats     | Highlights                                                                                       |
-| ------------------- | ----------- | ----------- | ----------- | ------------------------------------------------------------------------------------------------ |
-| **Phantom EQ**      | Equalizer   | **Ready**   | VST3 / CLAP | 24-band Dynamic & Spectral EQ, Natural/Linear Phase, EQ Match, Floating HUD, LUFS, Presets & A/B |
-| **Phantom Comp**    | Dynamics    | Planned     | VST3 / CLAP | Mastering & bus compressor with visual transfer curve & sidechain filter |
-| **Phantom Limiter** | Mastering   | Planned     | VST3 / CLAP | True Peak brickwall mastering limiter with EBU R128 loudness metering   |
-| **Phantom MB**      | Multiband   | Planned     | VST3 / CLAP | Linear-phase multiband dynamic processor with per-band soloing          |
-| **Phantom Saturn**  | Saturation  | Planned     | VST3 / CLAP | Multiband warmth, tape, and tube harmonic saturation engine             |
+| Plugin              | Category    | Status      | Formats     | Highlights                                                                                           |
+| ------------------- | ----------- | ----------- | ----------- | ---------------------------------------------------------------------------------------------------- |
+| **Phantom EQ**      | Equalizer   | **v0.1.0**  | VST3 / CLAP | 24-band Dynamic & Spectral EQ, Zero/Natural/Linear Phase, PDC Bypass, Mono+Stereo, Gain Scale & LUFS |
+| **Phantom Comp**    | Dynamics    | Planned     | VST3 / CLAP | Mastering & bus compressor with visual transfer curve & sidechain filter                             |
+| **Phantom Limiter** | Mastering   | Planned     | VST3 / CLAP | True Peak brickwall mastering limiter with EBU R128 loudness metering                                |
+| **Phantom MB**      | Multiband   | Planned     | VST3 / CLAP | Linear-phase multiband dynamic processor with per-band soloing                                       |
+| **Phantom Saturn**  | Saturation  | Planned     | VST3 / CLAP | Multiband warmth, tape, and tube harmonic saturation engine                                          |
 
 ---
 
@@ -148,8 +153,10 @@ Or double-click `install_to_cubase.bat` in Windows Explorer.
 git clone https://github.com/intity01/phantom-dsp-suite.git
 cd phantom-dsp-suite
 
-# Run DSP and Launcher test suites
+# Run DSP, UI, EQ, and Launcher test suites
 cargo test -p phantom-dsp --release -- --nocapture
+cargo test -p phantom-ui --release -- --nocapture
+cargo test -p phantom-eq --release -- --nocapture
 cargo test -p phantom-launcher --release -- --nocapture
 
 # Build Phantom EQ (VST3/CLAP cdylib) and Phantom Launcher
@@ -180,10 +187,10 @@ cargo zigbuild --target x86_64-pc-windows-gnu -p phantom-launcher --release
 
 ## Engineering Standards
 
-Phantom DSP Suite enforces strict, CI-verified quality gates across the entire workspace (45 modular Rust files, 21 automated DSP & Launcher tests):
+Phantom DSP Suite enforces strict, CI-verified quality gates across the entire workspace:
 
 - **<= 300 Lines per File** — Every Rust source file across `crates/`, `plugins/`, and `apps/` stays strictly concise, readable, and modular.
-- **Zero-Allocation Audio Thread** — All FFT scratch buffers, ring buffers, and parameter snapshots are pre-allocated outside `process()` (verified with a counting `#[global_allocator]` test). No heap allocations, no blocking locks, and zero NaN/Inf leakage.
+- **Zero-Allocation Audio Thread** — All FFT scratch buffers, ring buffers, smoothers, bypass delay lines, mono scratch buffers, and parameter snapshots are pre-allocated outside `process()` (verified with a counting `#[global_allocator]` test). No heap allocations, no blocking locks, and zero NaN/Inf leakage.
 - **Clean-Room DSP** — All signal processing is authored from first-principles mathematics and published academic literature. Zero reverse engineering of proprietary software.
 - **Offline-First Security** — Zero telemetry and streaming 64 KiB SHA-256 verification (`sha2`) for every installed plugin binary and release archive.
 

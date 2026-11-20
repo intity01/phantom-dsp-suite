@@ -1,7 +1,8 @@
 //! Phantom EQ — High-Performance, Zero-Telemetry Mastering Parametric Equalizer
 //! 24 dynamic bands (clean empty Pro-Q 4 startup), 10 shapes, 8 slopes (6 dB..Brickwall),
-//! Zero Latency / Natural Phase / Linear Phase FIR, 2x/4x Polyphase OS, External Sidechain,
-//! Character saturation, Auto-Gain, EBU R128 LUFS metering, and Headphone Solo Audition.
+//! Zero Latency / Natural Phase / Linear Phase FIR, 1x/2x/4x Polyphase OS, Mono & Stereo +
+//! External Sidechain, zero-click smoothing, 10 ms PDC bypass crossfade, Gain Scale, Character,
+//! Auto-Gain, EBU R128 LUFS metering, and Headphone Solo Audition.
 
 pub mod dsp_state;
 pub mod editor;
@@ -9,6 +10,9 @@ pub mod live_mirror;
 pub mod params;
 pub mod processor;
 pub mod state;
+
+#[cfg(test)]
+mod v01_tests;
 
 use dsp_state::SharedBandGr;
 use editor::{draw_editor, EditorShared, EditorState, NO_SOLO};
@@ -39,7 +43,6 @@ pub struct PhantomEq {
     collision_slot: usize,
     last_reported_latency: u32,
     last_mode: ProcessingModeParam,
-    was_bypassed: bool,
 }
 
 impl Default for PhantomEq {
@@ -58,7 +61,6 @@ impl Default for PhantomEq {
             collision_slot: CollisionRegistry::register_instance(),
             last_reported_latency: 0,
             last_mode: ProcessingModeParam::ZeroLatency,
-            was_bypassed: false,
         }
     }
 }
@@ -72,20 +74,32 @@ impl Drop for PhantomEq {
 impl Plugin for PhantomEq {
     const NAME: &'static str = "Phantom EQ";
     const VENDOR: &'static str = "Phantom DSP";
-    const URL: &'static str = "https://local.audio";
+    const URL: &'static str = "https://github.com/intity01/phantom-dsp-suite";
     const EMAIL: &'static str = "phantom@local.audio";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
-        main_input_channels: NonZeroU32::new(2),
-        main_output_channels: NonZeroU32::new(2),
-        aux_input_ports: &[new_nonzero_u32(2)],
-        names: PortNames {
-            aux_inputs: &["Sidechain"],
-            ..PortNames::const_default()
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
+        AudioIOLayout {
+            main_input_channels: NonZeroU32::new(2),
+            main_output_channels: NonZeroU32::new(2),
+            aux_input_ports: &[new_nonzero_u32(2)],
+            names: PortNames {
+                aux_inputs: &["Sidechain"],
+                ..PortNames::const_default()
+            },
+            ..AudioIOLayout::const_default()
         },
-        ..AudioIOLayout::const_default()
-    }];
+        AudioIOLayout {
+            main_input_channels: NonZeroU32::new(1),
+            main_output_channels: NonZeroU32::new(1),
+            aux_input_ports: &[new_nonzero_u32(1)],
+            names: PortNames {
+                aux_inputs: &["Sidechain"],
+                ..PortNames::const_default()
+            },
+            ..AudioIOLayout::const_default()
+        },
+    ];
 
     const MIDI_INPUT: MidiConfig = MidiConfig::None;
     const MIDI_OUTPUT: MidiConfig = MidiConfig::None;
@@ -134,7 +148,6 @@ impl Plugin for PhantomEq {
         self.processor.initialize(sr);
         self.shared_meters.reset();
         self.shared_band_gr.clear_all();
-        // Adopt any host-side state restore (project load) into the authoritative GUI mirror.
         self.live_params.reconcile();
 
         let mode = self.live_params.read(&self.params.mode);
@@ -179,37 +192,15 @@ impl Plugin for PhantomEq {
         }
 
         let editor_open = self.params.editor_state.is_open();
-        let slices = buffer.as_slice();
-        if slices.len() < 2 {
-            return ProcessStatus::KeepAlive;
-        }
-        let (left_slice, right_slice) = slices.split_at_mut(1);
-        let left_channel = &mut left_slice[0];
-        let right_channel = &mut right_slice[0];
-
-        if live.read(&self.params.bypass) {
-            self.was_bypassed = true;
-            self.shared_band_gr.clear_all();
-            self.processor
-                .meter_bypass_block(left_channel, right_channel, &self.shared_meters);
-            // Analyzer + meters keep moving while bypassed (raw input = output).
-            if editor_open {
-                self.shared_spectrum
-                    .push_stereo_pre(left_channel, right_channel);
-                self.shared_spectrum
-                    .push_stereo_post_and_side(left_channel, right_channel);
-            }
-            return ProcessStatus::KeepAlive;
-        }
-        if self.was_bypassed {
-            self.was_bypassed = false;
-            self.processor.reset();
-        }
-
-        if editor_open {
-            self.shared_spectrum
-                .push_stereo_pre(left_channel, right_channel);
-        }
+        let bypassed = live.read(&self.params.bypass);
+        let out_gain_linear = util::db_to_gain(live.read(&self.params.output_gain));
+        let phase_mult = if live.read(&self.params.phase_invert) {
+            -1.0
+        } else {
+            1.0
+        };
+        let final_gain = out_gain_linear * phase_mult;
+        let requested_solo = self.solo_band.load(Ordering::Relaxed);
 
         let (sc_left, sc_right): (&[f32], &[f32]) = aux
             .inputs
@@ -222,19 +213,42 @@ impl Plugin for PhantomEq {
             })
             .unwrap_or((&[], &[]));
 
-        let out_gain_linear = util::db_to_gain(live.read(&self.params.output_gain));
-        let phase_mult = if live.read(&self.params.phase_invert) {
-            -1.0
-        } else {
-            1.0
-        };
-        let final_gain = out_gain_linear * phase_mult;
-        let requested_solo = self.solo_band.load(Ordering::Relaxed);
+        let slices = buffer.as_slice();
+        if slices.is_empty() {
+            return ProcessStatus::KeepAlive;
+        }
+        if slices.len() == 1 {
+            let sp = editor_open.then_some(self.shared_spectrum.as_ref());
+            self.processor.process_mono_block(
+                &self.params,
+                live,
+                mode,
+                bypassed,
+                requested_solo,
+                &mut slices[0],
+                sc_left,
+                sc_right,
+                final_gain,
+                &self.shared_meters,
+                &self.shared_band_gr,
+                sp,
+            );
+            return ProcessStatus::KeepAlive;
+        }
 
+        let (left_slice, right_slice) = slices.split_at_mut(1);
+        let left_channel = &mut left_slice[0];
+        let right_channel = &mut right_slice[0];
+
+        if editor_open {
+            self.shared_spectrum
+                .push_stereo_pre(left_channel, right_channel);
+        }
         self.processor.process_block(
             &self.params,
             live,
             mode,
+            bypassed,
             requested_solo,
             left_channel,
             right_channel,
@@ -244,15 +258,12 @@ impl Plugin for PhantomEq {
             &self.shared_meters,
             &self.shared_band_gr,
         );
-
         if editor_open {
             self.shared_spectrum
                 .push_stereo_post_and_side(left_channel, right_channel);
         }
 
-        // `KeepAlive` reports an infinite tail (`kInfiniteTail`) so Cubase's silent-track
-        // suspension never stops calling `process()`: GUI edits, bypass, meters and the analyzer
-        // stay live while the transport is stopped. (`Normal` reports `kNoTail`.)
+        // `KeepAlive` keeps Cubase calling `process()` even on silent/stopped tracks.
         ProcessStatus::KeepAlive
     }
 }
@@ -267,6 +278,7 @@ impl ClapPlugin for PhantomEq {
         ClapFeature::AudioEffect,
         ClapFeature::Equalizer,
         ClapFeature::Stereo,
+        ClapFeature::Mono,
     ];
 }
 

@@ -12,6 +12,7 @@ mod gestures;
 mod header;
 mod inspector;
 mod match_panel;
+mod node_menu;
 mod preset_bar;
 mod shared;
 mod window_size;
@@ -35,6 +36,9 @@ pub struct EditorState {
     pub selected_band: Option<usize>,
     pub dragging_band: Option<usize>,
     pub drag_created_band: Option<usize>,
+    pub drag_virtual_pos: Option<Pos2>,
+    pub drag_last_pointer: Option<Pos2>,
+    pub node_menu: Option<(usize, Pos2)>,
     pub pending_curve_press: Option<Pos2>,
     pub last_band_created_time: f64,
     pub latched_solo: Option<usize>,
@@ -67,6 +71,8 @@ pub struct EditorState {
     pub factory_presets: Vec<EqPresetSnapshot>,
     pub user_presets: Vec<EqPresetSnapshot>,
     pub current_preset_idx: usize,
+    pub saving_preset_name: Option<String>,
+    pub focus_preset_name: bool,
 }
 
 impl Default for EditorState {
@@ -75,6 +81,9 @@ impl Default for EditorState {
             selected_band: None,
             dragging_band: None,
             drag_created_band: None,
+            drag_virtual_pos: None,
+            drag_last_pointer: None,
+            node_menu: None,
             pending_curve_press: None,
             last_band_created_time: -10.0,
             latched_solo: None,
@@ -107,6 +116,8 @@ impl Default for EditorState {
             factory_presets: factory_presets(),
             user_presets: load_user_presets(),
             current_preset_idx: 0,
+            saving_preset_name: None,
+            focus_preset_name: false,
         }
     }
 }
@@ -153,9 +164,13 @@ pub fn draw_editor(
         state.selected_band = None;
     }
 
-    if !ctx.wants_keyboard_input() {
+    if !ctx.wants_keyboard_input() && state.saving_preset_name.is_none() {
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
-            state.selected_band = None;
+            if state.node_menu.is_some() {
+                state.node_menu = None;
+            } else {
+                state.selected_band = None;
+            }
         }
         if ctx.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace)) {
             if let Some(sel) = state.selected_band {

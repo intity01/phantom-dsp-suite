@@ -10,6 +10,40 @@ use phantom_dsp::{
 };
 use std::sync::atomic::{AtomicU32, Ordering};
 
+/// Returns `true` for filter shapes whose amplitude scales with global `Gain Scale`.
+#[inline]
+pub const fn shape_uses_gain_scale(ftype: FilterType) -> bool {
+    matches!(
+        ftype,
+        FilterType::Bell
+            | FilterType::LowShelf
+            | FilterType::HighShelf
+            | FilterType::TiltShelf
+            | FilterType::FlatTilt
+            | FilterType::BandPass
+    )
+}
+
+/// Applies normalized `gain_scale` (`0.0..=2.0`) to band gain or dynamic range for gain-bearing shapes.
+#[inline]
+pub fn scale_band_gain(ftype: FilterType, gain_db: f32, gain_scale: f32) -> f32 {
+    if shape_uses_gain_scale(ftype) {
+        (gain_db * gain_scale).clamp(-60.0, 60.0)
+    } else {
+        gain_db
+    }
+}
+
+/// Applies normalized `gain_scale` (`0.0..=2.0`) to dynamic range for gain-bearing shapes only.
+#[inline]
+pub fn scale_band_dyn_range(ftype: FilterType, dyn_range_db: f32, gain_scale: f32) -> f32 {
+    if shape_uses_gain_scale(ftype) {
+        (dyn_range_db * gain_scale).clamp(-48.0, 48.0)
+    } else {
+        dyn_range_db
+    }
+}
+
 /// Lock-free atomic live Dynamic Gain Reduction bus for all 24 bands (audio -> 60 fps GUI).
 pub struct SharedBandGr {
     slots: [AtomicU32; NUM_BANDS],

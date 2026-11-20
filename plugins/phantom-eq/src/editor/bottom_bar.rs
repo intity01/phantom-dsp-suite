@@ -1,15 +1,18 @@
 //! Pro-Q 4 Slim Bottom Control Strip (~28 px)
 //! Left: Mode/Engine popover, Analyzer & Tools popover, Piano/Snap toggle, Display Scale dropdown.
-//! Right: Phase Invert (Ø), Auto-Gain, Output Gain slider, and subtle PHANTOM DSP badge.
+//! Right: Phase Invert (Ø), Auto-Gain, Global Gain Scale (0%-200%), Output Gain, and PHANTOM DSP badge.
 
 use super::bottom_popovers::{draw_analyzer_tools_popover, draw_engine_popover};
 use super::{EditorShared, EditorState};
 use crate::live_mirror::LiveSetter;
 use crate::params::PhantomEqParams;
-use nih_plug_egui::egui::{self, Align, FontId, Layout, Margin, RichText, Sense, Slider, Ui, Vec2};
+use nih_plug_egui::egui::{
+    self, Align, Align2, Color32, CornerRadius, FontId, Layout, Margin, RichText, Sense, Slider,
+    Stroke, StrokeKind, Ui, Vec2,
+};
 use phantom_ui::{
-    draw_icon_button, draw_phase_icon, parse_audio_number, ACCENT_AMBER, ACCENT_CYAN, ACCENT_GREEN,
-    BG_CARD, DB_SCALE_OPTIONS, TEXT_DIMMED, TEXT_MUTED,
+    draw_icon_button, draw_phase_icon, parse_audio_number, with_alpha, ACCENT_AMBER, ACCENT_CYAN,
+    ACCENT_GREEN, BG_CARD, DB_SCALE_OPTIONS, TEXT_BRIGHT, TEXT_DIMMED, TEXT_MUTED,
 };
 
 pub fn draw_bottom_bar(
@@ -126,6 +129,8 @@ fn draw_right_master_controls(
                 .color(TEXT_MUTED),
         );
 
+        draw_gain_scale_pill(ui, setter, params);
+
         let auto_gain = setter.read(&params.auto_gain);
         let ag_text = if auto_gain {
             format!("AUTO {:+.1} dB", makeup_db)
@@ -162,4 +167,58 @@ fn draw_right_master_controls(
             setter.set_once(&params.phase_invert, !phase_inv);
         }
     });
+}
+
+fn draw_gain_scale_pill(ui: &mut Ui, setter: &LiveSetter, params: &PhantomEqParams) {
+    let cur = setter.read(&params.gain_scale);
+    let is_scaled = (cur - 100.0).abs() > 0.5;
+    let (rect, res) = ui.allocate_exact_size(Vec2::new(44.0, 19.0), Sense::click_and_drag());
+    let p = ui.painter();
+    let r = CornerRadius::same(4);
+    let active_vis = res.hovered() || res.dragged();
+    let fill = if is_scaled {
+        with_alpha(ACCENT_CYAN, if active_vis { 42 } else { 26 })
+    } else {
+        Color32::from_rgba_unmultiplied(255, 255, 255, if active_vis { 20 } else { 10 })
+    };
+    let border = if is_scaled || res.dragged() {
+        with_alpha(ACCENT_CYAN, 145)
+    } else {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 28)
+    };
+    p.rect_filled(rect, r, fill);
+    p.rect_stroke(rect, r, Stroke::new(1.0_f32, border), StrokeKind::Inside);
+    p.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        format!("{cur:.0}%"),
+        FontId::proportional(9.5),
+        if is_scaled || res.dragged() {
+            ACCENT_CYAN
+        } else {
+            TEXT_BRIGHT
+        },
+    );
+
+    if res.double_clicked() {
+        setter.set_once(&params.gain_scale, 100.0);
+    } else if res.drag_started() {
+        setter.begin_set_parameter(&params.gain_scale);
+    } else if res.dragged() {
+        let fine = if ui.input(|i| i.modifiers.shift) {
+            0.25
+        } else {
+            1.0
+        };
+        let delta = (-res.drag_delta().y + res.drag_delta().x * 0.5) * 0.6 * fine;
+        if delta.abs() > 1e-4 {
+            setter.set_parameter(&params.gain_scale, (cur + delta).clamp(0.0, 200.0));
+        }
+    }
+    if res.drag_stopped() {
+        setter.end_set_parameter(&params.gain_scale);
+    }
+    res.on_hover_text(
+        "Global Gain Scale (0%-200%): drag to scale band gains & dynamics, double-click resets 100%",
+    );
 }

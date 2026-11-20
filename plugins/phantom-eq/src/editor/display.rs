@@ -1,15 +1,16 @@
-//! Main EQ Frequency Response Display, Pro-Q 4 Overlays, Ghost Preview, Piano Roll & Floating HUD
+//! Main EQ Frequency Response Display, Pro-Q 4 Overlays, Ghost Preview, Context Menu & Floating HUD
 //! Renders adaptive-scale grid, dual Pre/Post + Peak Hold spectrum, Collision & EQ Match
-//! overlays, Spectrum Grab peaks, cascaded band curves, Ghost Preview node, nodes with live GR
-//! rings, 20px C1..C8 Piano Roll bar, and the Pro-Q 4 Floating Band HUD Popover.
+//! overlays, Spectrum Grab peaks, gain-scaled cascaded band curves, Ghost Preview node, nodes with
+//! live GR rings, 20px C1..C8 Piano Roll bar, Floating Band HUD, and Right-Click Node Context Menu.
 
 use super::canvas_hit::{draw_ghost_node, ghost_position};
 use super::display_helpers::{
-    band_cascaded_coeffs, build_node_render_data, create_band_at, find_first_unused_band,
+    band_cascaded_coeffs, build_node_render_data, draw_piano_strip, find_first_unused_band,
     find_hit_used_node,
 };
 use super::gestures::handle_canvas_gestures;
 use super::inspector::draw_floating_hud_for_selected;
+use super::node_menu::draw_node_context_menu;
 use super::window_size::local_pointer;
 use super::{EditorShared, EditorState};
 use crate::live_mirror::LiveSetter;
@@ -19,8 +20,8 @@ use phantom_dsp::CascadedCoeffs;
 use phantom_ui::{
     band_color, detect_spectrum_peaks, draw_band_curve_fn, draw_canvas_grid,
     draw_collision_overlay, draw_combined_curve_fn, draw_dual_spectrum, draw_empty_canvas_hint,
-    draw_node, draw_piano_roll, draw_reference_spectrum_overlay, draw_spectrum_grab_overlay,
-    show_node_tooltip, EqCanvasMapping,
+    draw_node, draw_reference_spectrum_overlay, draw_spectrum_grab_overlay, show_node_tooltip,
+    EqCanvasMapping,
 };
 
 const PIANO_ROLL_HEIGHT: f32 = 20.0;
@@ -48,6 +49,7 @@ pub fn draw_main_display(
     let map = EqCanvasMapping::with_db_range(canvas_rect, state.scale_db);
     let soloed_band = state.effective_solo(params, live);
     let natural_phase = live.read(&params.mode) == ProcessingModeParam::NaturalPhase;
+    let gain_scale = (live.read(&params.gain_scale) / 100.0).clamp(0.0, 2.0);
     let sr = state.sample_rate;
     let pointer_pos = local_pointer(ui, ui.input(|i| i.pointer.hover_pos()));
 
@@ -86,7 +88,8 @@ pub fn draw_main_display(
 
     // 4. Spectrum Grab Peak Detection & Interactive Overlay
     let grab_active = (state.spectrum_grab_enabled || state.spectrum_processor.is_frozen())
-        && state.dragging_band.is_none();
+        && state.dragging_band.is_none()
+        && state.node_menu.is_none();
     let hovered_grab_peak = if grab_active {
         let peaks = detect_spectrum_peaks(&map, state.spectrum_processor.post_bins_db(), 6);
         draw_spectrum_grab_overlay(&painter, &map, &peaks, pointer_pos)
@@ -94,7 +97,7 @@ pub fn draw_main_display(
         None
     };
 
-    // 5. Collect cascaded coeffs & positions for all live `used` bands on stack (zero allocs)
+    // 5. Collect gain-scaled cascaded coeffs & positions for all live `used` bands (zero allocs)
     let mut active_coeffs = [CascadedCoeffs::default(); NUM_BANDS];
     let mut active_count = 0usize;
     let mut used_count = 0usize;
@@ -113,16 +116,17 @@ pub fn draw_main_display(
             map.db_to_y(live.read(&band.gain)),
         ));
         if live.read(&band.enabled) {
-            active_coeffs[active_count] = band_cascaded_coeffs(band, live, sr, natural_phase);
+            active_coeffs[active_count] =
+                band_cascaded_coeffs(band, live, sr, natural_phase, gain_scale);
             active_count += 1;
         }
     }
 
-    // 6. Selected & Soloed Band Individual Curve Overlays
+    // 6. Selected & Soloed Band Individual Curve Overlays (matching global Gain Scale)
     if let Some(sel_idx) = state.selected_band {
         let sel_band = &params.bands[sel_idx];
         if live.read(&sel_band.used) {
-            let sel_coeffs = band_cascaded_coeffs(sel_band, live, sr, natural_phase);
+            let sel_coeffs = band_cascaded_coeffs(sel_band, live, sr, natural_phase, gain_scale);
             draw_band_curve_fn(
                 &painter,
                 &map,
@@ -136,7 +140,7 @@ pub fn draw_main_display(
     if let Some(s_idx) = soloed_band {
         if state.selected_band != Some(s_idx) && live.read(&params.bands[s_idx].used) {
             let sb = &params.bands[s_idx];
-            let sc = band_cascaded_coeffs(sb, live, sr, natural_phase);
+            let sc = band_cascaded_coeffs(sb, live, sr, natural_phase, gain_scale);
             draw_band_curve_fn(
                 &painter,
                 &map,
@@ -160,13 +164,14 @@ pub fn draw_main_display(
         draw_empty_canvas_hint(&painter, &map);
     }
 
-    // 8. Ghost Preview Node on Hover (ONLY when hovering within CURVE_CLICK_HIT_PX of EQ curve)
+    // 8. Ghost Preview Node on Hover (suppressed when context menu is open or away from curve)
     let hovered_node =
         pointer_pos.and_then(|p| find_hit_used_node(p, &node_positions, state.selected_band));
     let over_prev_hud = state
         .last_hud_rect
         .is_some_and(|r| pointer_pos.is_some_and(|p| r.contains(p)));
     if response.hovered()
+        && state.node_menu.is_none()
         && state.dragging_band.is_none()
         && hovered_node.is_none()
         && hovered_grab_peak.is_none()
@@ -205,43 +210,30 @@ pub fn draw_main_display(
     }
 
     // 10. Piano Roll Frequency Strip (20px at bottom of display) + Click-to-Snap Note
-    let mut in_piano = false;
-    if state.show_piano_roll {
+    let in_piano = if state.show_piano_roll {
         let piano_rect = Rect::from_min_max(
             Pos2::new(response.rect.min.x, canvas_max_y),
             response.rect.max,
         );
-        let hov_piano_freq = pointer_pos
-            .filter(|p| piano_rect.contains(*p))
-            .map(|p| map.x_to_freq(p.x));
-        in_piano = hov_piano_freq.is_some();
-        let snapped_key = draw_piano_roll(
+        draw_piano_strip(
+            ui,
             &painter,
+            &response,
             &map,
             piano_rect,
+            pointer_pos,
             &used_band_freqs[..used_count],
-            state.selected_band,
-            hov_piano_freq,
-        );
-        if in_piano && response.contains_pointer() && ui.input(|i| i.pointer.primary_pressed()) {
-            if let Some(note_freq) = snapped_key {
-                let f = note_freq.clamp(10.0, 30000.0);
-                if let Some(sel) = state
-                    .selected_band
-                    .filter(|&i| i < NUM_BANDS && live.read(&params.bands[i].used))
-                {
-                    setter.set_once(&params.bands[sel].frequency, f);
-                } else {
-                    let now = ui.input(|i| i.time);
-                    let _ = create_band_at(setter, params, state, f, 0.0, now);
-                }
-            }
-        }
-    }
+            setter,
+            params,
+            state,
+        )
+    } else {
+        false
+    };
 
     // 11. Pro-Q 4 Floating Band HUD Popover near the selected node
     state.last_hud_rect = None;
-    if state.show_floating_hud {
+    if state.show_floating_hud && state.node_menu.is_none() {
         if let Some(sel_idx) = state
             .selected_band
             .filter(|&i| i < NUM_BANDS && live.read(&params.bands[i].used))
@@ -255,8 +247,11 @@ pub fn draw_main_display(
         }
     }
 
-    // 12. Canvas Mouse & Keyboard Gestures (blocked when clicking inside Floating HUD / Piano Roll)
-    if !in_piano {
+    // 12. Right-Click Band Node Context Menu (blocks background canvas gestures while open)
+    let menu_open = draw_node_context_menu(ui, map.rect, setter, state, params, shared);
+
+    // 13. Canvas Mouse & Keyboard Gestures (blocked when inside HUD / Piano Roll / Context Menu)
+    if !in_piano && !menu_open {
         handle_canvas_gestures(
             ui,
             &response,
@@ -274,16 +269,18 @@ pub fn draw_main_display(
         );
     }
 
-    if let Some(h_idx) = hovered_node {
-        if live.read(&params.bands[h_idx].used)
-            && !state
-                .last_hud_rect
-                .is_some_and(|r| pointer_pos.is_some_and(|p| r.contains(p)))
-        {
-            let gr = shared.band_gr.load(h_idx);
-            let tip_data =
-                build_node_render_data(params, live, h_idx, soloed_band == Some(h_idx), gr);
-            show_node_tooltip(&response, &tip_data);
+    if !menu_open {
+        if let Some(h_idx) = hovered_node {
+            if live.read(&params.bands[h_idx].used)
+                && !state
+                    .last_hud_rect
+                    .is_some_and(|r| pointer_pos.is_some_and(|p| r.contains(p)))
+            {
+                let gr = shared.band_gr.load(h_idx);
+                let tip_data =
+                    build_node_render_data(params, live, h_idx, soloed_band == Some(h_idx), gr);
+                show_node_tooltip(&response, &tip_data);
+            }
         }
     }
 }

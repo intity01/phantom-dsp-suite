@@ -3,14 +3,17 @@
 //! All reads go through `LiveParamMirror` and all writes go through `LiveSetter` (0 ms feedback).
 
 use super::{EditorShared, EditorState};
+use crate::dsp_state::scale_band_gain;
 use crate::live_mirror::{LiveParamMirror, LiveSetter};
 use crate::params::{
     BandParams, ChannelPlacementParam, FilterSlopeParam, FilterTypeParam, PhantomEqParams,
     NUM_BANDS,
 };
-use nih_plug_egui::egui::Pos2;
-use phantom_dsp::CascadedCoeffs;
-use phantom_ui::NodeRenderData;
+use nih_plug_egui::egui::{Painter, Pos2, Rect, Response, Ui};
+use phantom_dsp::{CascadedCoeffs, FilterType};
+use phantom_ui::{
+    draw_piano_roll, snap_freq_to_nearest_semitone, EqCanvasMapping, NodeRenderData, SpectrumPeak,
+};
 use std::f32::consts::FRAC_1_SQRT_2;
 
 pub const NODE_HIT_RADIUS: f32 = 15.0;
@@ -20,13 +23,16 @@ pub fn band_cascaded_coeffs(
     live: &LiveParamMirror,
     sample_rate: f32,
     natural_phase: bool,
+    gain_scale: f32,
 ) -> CascadedCoeffs {
+    let ftype: FilterType = live.read(&band.filter_type).into();
+    let scaled_gain = scale_band_gain(ftype, live.read(&band.gain), gain_scale);
     CascadedCoeffs::calculate(
-        live.read(&band.filter_type).into(),
+        ftype,
         live.read(&band.slope).into(),
         sample_rate,
         live.read(&band.frequency),
-        live.read(&band.gain),
+        scaled_gain,
         live.read(&band.q),
         natural_phase,
     )
@@ -140,6 +146,11 @@ pub fn delete_band(
         setter.end_set_parameter(&band.gain);
         state.dragging_band = None;
         state.drag_created_band = None;
+        state.drag_virtual_pos = None;
+        state.drag_last_pointer = None;
+    }
+    if state.node_menu.is_some_and(|(b, _)| b == idx) {
+        state.node_menu = None;
     }
 
     let band = &params.bands[idx];
@@ -186,5 +197,97 @@ pub fn build_node_render_data(
         is_soloed,
         filter_name: live.read(&band.filter_type).short_name(),
         target_name: live.read(&band.placement).short_name(),
+    }
+}
+
+/// Renders the optional 20px C1..C8 Piano Roll bar and handles click-to-snap note selection.
+/// Returns `true` when the pointer is hovering inside the piano roll strip.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_piano_strip(
+    ui: &Ui,
+    painter: &Painter,
+    response: &Response,
+    map: &EqCanvasMapping,
+    piano_rect: Rect,
+    pointer_pos: Option<Pos2>,
+    used_band_freqs: &[(usize, f32)],
+    setter: &LiveSetter,
+    params: &PhantomEqParams,
+    state: &mut EditorState,
+) -> bool {
+    let hov_piano_freq = pointer_pos
+        .filter(|p| piano_rect.contains(*p))
+        .map(|p| map.x_to_freq(p.x));
+    let in_piano = hov_piano_freq.is_some();
+    let snapped_key = draw_piano_roll(
+        painter,
+        map,
+        piano_rect,
+        used_band_freqs,
+        state.selected_band,
+        hov_piano_freq,
+    );
+    if in_piano
+        && state.node_menu.is_none()
+        && response.contains_pointer()
+        && ui.input(|i| i.pointer.primary_pressed())
+    {
+        if let Some(note_freq) = snapped_key {
+            let f = note_freq.clamp(10.0, 30000.0);
+            if let Some(sel) = state
+                .selected_band
+                .filter(|&i| i < NUM_BANDS && setter.read(&params.bands[i].used))
+            {
+                setter.set_once(&params.bands[sel].frequency, f);
+            } else {
+                let now = ui.input(|i| i.time);
+                let _ = create_band_at(setter, params, state, f, 0.0, now);
+            }
+        }
+    }
+    in_piano
+}
+
+#[inline]
+pub fn resolve_freq(raw_freq: f32, snap: bool) -> f32 {
+    let c = raw_freq.clamp(10.0, 30000.0);
+    if snap {
+        snap_freq_to_nearest_semitone(c).clamp(10.0, 30000.0)
+    } else {
+        c
+    }
+}
+
+pub fn grab_spectrum_peak_band(
+    setter: &LiveSetter,
+    params: &PhantomEqParams,
+    state: &mut EditorState,
+    peak: SpectrumPeak,
+    start: Option<Pos2>,
+    alt: bool,
+    now_sec: f64,
+) {
+    let existing = (0..NUM_BANDS).find(|&i| {
+        setter.read(&params.bands[i].used)
+            && ((setter.read(&params.bands[i].frequency) - peak.freq_hz).abs()
+                / peak.freq_hz.max(1.0))
+                < 0.03
+    });
+    if let Some(idx) =
+        existing.or_else(|| create_band_at(setter, params, state, peak.freq_hz, 0.0, now_sec))
+    {
+        let band = &params.bands[idx];
+        setter.set_once(&band.filter_type, FilterTypeParam::Bell);
+        setter.set_once(&band.q, peak.estimated_q.clamp(0.1, 30.0));
+        state.selected_band = Some(idx);
+        state.dragging_band = Some(idx);
+        state.drag_virtual_pos = None;
+        state.drag_last_pointer = start;
+        setter.begin_set_parameter(&band.frequency);
+        setter.set_parameter(&band.frequency, peak.freq_hz.clamp(10.0, 30000.0));
+        setter.begin_set_parameter(&band.gain);
+        if alt {
+            state.alt_solo_band = Some(idx);
+        }
     }
 }

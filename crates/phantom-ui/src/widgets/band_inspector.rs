@@ -11,9 +11,10 @@ use crate::widgets::inspector_controls::{
 use crate::widgets::inspector_rows::{
     draw_band_selector, draw_core_sliders_row, draw_dynamics_row,
 };
+use crate::widgets::knob_edit::KnobEditKind;
 use crate::widgets::rotary_knob::{
-    draw_compact_knob, freq_to_norm, linear_to_norm, norm_to_freq, norm_to_linear, norm_to_q,
-    q_to_norm,
+    draw_editable_compact_knob, freq_to_norm, linear_to_norm, norm_to_freq, norm_to_linear,
+    norm_to_q, q_to_norm,
 };
 use nih_plug_egui::egui::{self, Color32, CornerRadius, FontId, Margin, RichText, Ui};
 
@@ -187,7 +188,7 @@ pub fn draw_hud_knobs_row(
         } else {
             format!("{:.1} Hz", data.freq)
         };
-        if let Some(n) = draw_compact_knob(
+        if let Some(n) = draw_editable_compact_knob(
             ui,
             ("hf", idx),
             "FREQ",
@@ -197,11 +198,12 @@ pub fn draw_hud_knobs_row(
             accent,
             diam,
             false,
+            KnobEditKind::FreqHz,
         ) {
             events.set_freq = Some(norm_to_freq(n));
         }
         let g_txt = format!("{:+.1} dB", data.gain);
-        if let Some(n) = draw_compact_knob(
+        if let Some(n) = draw_editable_compact_knob(
             ui,
             ("hg", idx),
             "GAIN",
@@ -211,11 +213,15 @@ pub fn draw_hud_knobs_row(
             accent,
             diam,
             true,
+            KnobEditKind::GainDb {
+                min: -30.0,
+                max: 30.0,
+            },
         ) {
             events.set_gain = Some(norm_to_linear(n, -30.0, 30.0));
         }
         let q_txt = format!("{:.2}", data.q);
-        if let Some(n) = draw_compact_knob(
+        if let Some(n) = draw_editable_compact_knob(
             ui,
             ("hq", idx),
             "Q",
@@ -225,6 +231,7 @@ pub fn draw_hud_knobs_row(
             accent,
             diam,
             false,
+            KnobEditKind::Q,
         ) {
             events.set_q = Some(norm_to_q(n));
         }
@@ -240,7 +247,7 @@ pub fn draw_hud_knobs_row(
         } else {
             ACCENT_CYAN
         };
-        if let Some(n) = draw_compact_knob(
+        if let Some(n) = draw_editable_compact_knob(
             ui,
             ("hd", idx),
             "DYN",
@@ -250,6 +257,10 @@ pub fn draw_hud_knobs_row(
             d_col,
             diam,
             true,
+            KnobEditKind::GainDb {
+                min: -24.0,
+                max: 24.0,
+            },
         ) {
             events.set_dyn_range = Some(norm_to_linear(n, -24.0, 24.0));
         }

@@ -1,37 +1,48 @@
 //! Audio Processing Engine for Phantom EQ
-//! Coordinates 24-band Cascaded IIR (Zero Latency / Natural Phase + 2x/4x Polyphase OS +
-//! Dynamic EQ + External Sidechain), Linear Phase FIR, Character, Auto-Gain, Output Metering,
-//! and click-free 10 ms crossfaded Per-Band Solo Audition — strictly zero heap allocations.
+//! Coordinates 24-band smoothed Cascaded IIR (Zero Latency / Natural Phase + 1x/2x/4x Polyphase OS
+//! + Dynamic & Spectral EQ), Linear Phase FIR, 10 ms click-free PDC Bypass Crossfade, Character,
+//! Auto-Gain, Output Metering, Mono + Stereo blocks, and Solo Audition — zero heap allocations.
 
 mod iir;
+mod iir_run;
 mod linear;
+mod mono;
 mod solo;
 
 use crate::dsp_state::SharedBandGr;
 use crate::live_mirror::ParamRead;
 use crate::params::{PhantomEqParams, ProcessingModeParam, NUM_BANDS};
-use iir::{prepare_iir_bands, process_iir_sample_os, publish_band_gr};
-use linear::{LinearPhaseTracker, LP_CHUNK_SIZE};
+use linear::LinearPhaseTracker;
 use phantom_dsp::{
-    AutoGainCompensator, CascadedStereoFilter, ChannelTarget, CharacterMode, CharacterProcessor,
-    DynamicDetector, LinearPhaseEngine, OutputMeter, OversampleFactor, Oversampler2x,
-    Oversampler4x, SharedMeters, SpectralBandProcessor,
+    AutoGainCompensator, BandParamSmoother, BypassCrossfade, CascadedStereoFilter, CharacterMode,
+    CharacterProcessor, DynamicDetector, LatencyBypassDelay, LinearPhaseEngine, OnePoleSmoother,
+    OutputMeter, Oversampler2x, Oversampler4x, SharedMeters, SpectralBandProcessor,
 };
 use solo::SoloCrossfade;
 
+const PARAM_SMOOTH_MS: f32 = 15.0;
+
 pub struct EqProcessor {
-    sample_rate: f32,
-    filters: [CascadedStereoFilter; NUM_BANDS],
-    dynamic_detectors: [DynamicDetector; NUM_BANDS],
-    spectral_processors: [SpectralBandProcessor; NUM_BANDS],
-    solo: SoloCrossfade,
-    oversampler_2x: Oversampler2x,
-    oversampler_4x: Oversampler4x,
-    linear_phase: LinearPhaseEngine,
-    lp_tracker: LinearPhaseTracker,
-    character: CharacterProcessor,
-    auto_gain: AutoGainCompensator,
-    output_meter: OutputMeter,
+    pub(super) sample_rate: f32,
+    pub(super) filters: [CascadedStereoFilter; NUM_BANDS],
+    pub(super) dynamic_detectors: [DynamicDetector; NUM_BANDS],
+    pub(super) spectral_processors: [SpectralBandProcessor; NUM_BANDS],
+    pub(super) band_smoothers: [BandParamSmoother; NUM_BANDS],
+    pub(super) band_was_active: [bool; NUM_BANDS],
+    pub(super) output_gain_smoother: OnePoleSmoother,
+    pub(super) gain_scale_smoother: OnePoleSmoother,
+    pub(super) bypass_xfade: BypassCrossfade,
+    pub(super) latency_bypass_delay: LatencyBypassDelay,
+    pub(super) solo: SoloCrossfade,
+    pub(super) oversampler_2x: Oversampler2x,
+    pub(super) oversampler_4x: Oversampler4x,
+    pub(super) linear_phase: LinearPhaseEngine,
+    pub(super) lp_tracker: LinearPhaseTracker,
+    pub(super) character: CharacterProcessor,
+    pub(super) auto_gain: AutoGainCompensator,
+    pub(super) output_meter: OutputMeter,
+    was_fully_bypassed_iir: bool,
+    primed: bool,
 }
 
 impl Default for EqProcessor {
@@ -47,6 +58,12 @@ impl EqProcessor {
             filters: std::array::from_fn(|_| CascadedStereoFilter::new()),
             dynamic_detectors: std::array::from_fn(|_| DynamicDetector::new()),
             spectral_processors: std::array::from_fn(|_| SpectralBandProcessor::new()),
+            band_smoothers: std::array::from_fn(|_| BandParamSmoother::new(1000.0, 0.0, 1.0)),
+            band_was_active: [false; NUM_BANDS],
+            output_gain_smoother: OnePoleSmoother::new(1.0),
+            gain_scale_smoother: OnePoleSmoother::new(1.0),
+            bypass_xfade: BypassCrossfade::new(false),
+            latency_bypass_delay: LatencyBypassDelay::new(),
             solo: SoloCrossfade::new(),
             oversampler_2x: Oversampler2x::new(),
             oversampler_4x: Oversampler4x::new(),
@@ -55,11 +72,21 @@ impl EqProcessor {
             character: CharacterProcessor::new(),
             auto_gain: AutoGainCompensator::new(),
             output_meter: OutputMeter::new(),
+            was_fully_bypassed_iir: false,
+            primed: false,
         }
     }
 
     pub fn initialize(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate.max(8000.0);
+        for sm in &mut self.band_smoothers {
+            sm.set_sample_rate(self.sample_rate, PARAM_SMOOTH_MS);
+        }
+        self.output_gain_smoother
+            .set_sample_rate(self.sample_rate, PARAM_SMOOTH_MS);
+        self.gain_scale_smoother
+            .set_sample_rate(self.sample_rate, PARAM_SMOOTH_MS);
+        self.bypass_xfade.set_sample_rate(self.sample_rate);
         self.solo.set_sample_rate(self.sample_rate);
         self.character.set_sample_rate(self.sample_rate);
         self.auto_gain.set_sample_rate(self.sample_rate);
@@ -84,10 +111,14 @@ impl EqProcessor {
         for spec in &mut self.spectral_processors {
             spec.reset();
         }
+        self.band_was_active = [false; NUM_BANDS];
+        self.was_fully_bypassed_iir = false;
+        self.primed = false;
         self.solo.reset();
         self.oversampler_2x.reset();
         self.oversampler_4x.reset();
         self.linear_phase.reset();
+        self.latency_bypass_delay.reset();
         self.character.reset();
         self.auto_gain.reset();
         self.output_meter.reset();
@@ -98,6 +129,7 @@ impl EqProcessor {
         self.oversampler_4x.reset();
         if mode == ProcessingModeParam::LinearPhase {
             self.linear_phase.reset();
+            self.latency_bypass_delay.reset();
             self.lp_tracker.mark_dirty();
         }
     }
@@ -111,17 +143,25 @@ impl EqProcessor {
     }
 
     pub fn sync_linear_phase(&mut self, params: &PhantomEqParams, live: &impl ParamRead) {
-        self.lp_tracker
-            .sync(&mut self.linear_phase, params, live, self.sample_rate);
+        let gain_scale = (live.read(&params.gain_scale) / 100.0).clamp(0.0, 2.0);
+        self.lp_tracker.sync(
+            &mut self.linear_phase,
+            params,
+            live,
+            self.sample_rate,
+            gain_scale,
+        );
     }
 
-    /// Processes a stereo audio block through EQ, Character, Auto-Gain, Solo ramp, and Metering.
+    /// Processes a stereo audio block through smoothed EQ, Character, Auto-Gain, Solo, 10 ms PDC
+    /// Bypass Crossfade, and Metering — strictly zero heap allocations.
     #[allow(clippy::too_many_arguments)]
     pub fn process_block(
         &mut self,
         params: &PhantomEqParams,
         live: &impl ParamRead,
         mode: ProcessingModeParam,
+        bypassed: bool,
         requested_solo: u8,
         left: &mut [f32],
         right: &mut [f32],
@@ -136,6 +176,19 @@ impl EqProcessor {
             return;
         }
 
+        let gain_scale_target = (live.read(&params.gain_scale) / 100.0).clamp(0.0, 2.0);
+        let snap_initial = !self.primed;
+        if snap_initial {
+            self.bypass_xfade.reset(bypassed);
+            self.output_gain_smoother.reset(final_gain);
+            self.gain_scale_smoother.reset(gain_scale_target);
+            self.primed = true;
+        } else {
+            self.bypass_xfade.set_bypassed(bypassed);
+            self.output_gain_smoother.set_target(final_gain);
+            self.gain_scale_smoother.set_target(gain_scale_target);
+        }
+
         let char_mode: CharacterMode = live.read(&params.character).into();
         let auto_gain_en = live.read(&params.auto_gain);
         let (solo_target, solo_placement) =
@@ -144,143 +197,59 @@ impl EqProcessor {
 
         if mode == ProcessingModeParam::LinearPhase {
             shared_gr.clear_all();
+            self.gain_scale_smoother.skip(total);
             self.process_linear_phase_chunks(
                 params,
                 live,
+                gain_scale_target,
                 &mut left[..total],
                 &mut right[..total],
                 char_mode,
                 auto_gain_en,
-                final_gain,
                 solo_target,
                 solo_placement,
             );
+        } else if self.bypass_xfade.is_fully_bypassed() {
+            self.was_fully_bypassed_iir = true;
+            shared_gr.clear_all();
+            self.output_gain_smoother.skip(total);
+            self.gain_scale_smoother.skip(total);
+            self.output_meter
+                .process_block(&left[..total], &right[..total]);
         } else {
-            let natural_phase = mode == ProcessingModeParam::NaturalPhase;
-            let os_factor: OversampleFactor = live.read(&params.oversampling).into();
-            let effective_sr = self.sample_rate * os_factor.multiplier() as f32;
-            let (mut active, count) = prepare_iir_bands(
+            if self.was_fully_bypassed_iir {
+                self.was_fully_bypassed_iir = false;
+                for filter in &mut self.filters {
+                    filter.reset();
+                }
+                self.oversampler_2x.reset();
+                self.oversampler_4x.reset();
+                self.band_was_active = [false; NUM_BANDS];
+            }
+            self.process_iir_block(
                 params,
                 live,
-                &mut self.filters,
-                &mut self.dynamic_detectors,
-                &mut self.spectral_processors,
-                shared_gr,
-                effective_sr,
-                natural_phase,
-            );
-
-            for i in 0..total {
-                let pre_l = left[i];
-                let pre_r = right[i];
-                let sc_l = sc_left.get(i).copied().unwrap_or(0.0);
-                let sc_r = sc_right.get(i).copied().unwrap_or(0.0);
-
-                let (eq_l, eq_r) = if self.solo.is_steady_full_solo(solo_target) {
-                    (pre_l, pre_r)
-                } else {
-                    let (fl, fr) = process_iir_sample_os(
-                        &mut active[..count],
-                        &mut self.filters,
-                        &mut self.dynamic_detectors,
-                        &mut self.spectral_processors,
-                        &mut self.oversampler_2x,
-                        &mut self.oversampler_4x,
-                        os_factor,
-                        effective_sr,
-                        natural_phase,
-                        pre_l,
-                        pre_r,
-                        sc_l,
-                        sc_r,
-                    );
-                    let (cl, cr) = self.character.process_stereo(fl, fr, char_mode);
-                    self.auto_gain
-                        .process_stereo(pre_l, pre_r, cl, cr, auto_gain_en)
-                };
-
-                let (ml, mr) =
-                    self.solo
-                        .apply_sample(pre_l, pre_r, eq_l, eq_r, solo_target, solo_placement);
-                let out_l = ml * final_gain;
-                let out_r = mr * final_gain;
-                self.output_meter.process_sample(out_l, out_r);
-                left[i] = out_l;
-                right[i] = out_r;
-            }
-
-            publish_band_gr(
-                &active[..count],
-                &self.dynamic_detectors,
-                &self.spectral_processors,
+                mode == ProcessingModeParam::NaturalPhase,
+                snap_initial,
+                char_mode,
+                auto_gain_en,
+                solo_target,
+                solo_placement,
+                &mut left[..total],
+                &mut right[..total],
+                sc_left,
+                sc_right,
                 shared_gr,
             );
         }
 
         self.solo.finish_block(solo_target);
         self.output_meter.publish(shared_meters);
-        shared_meters.store_makeup_db(self.auto_gain.current_makeup_db());
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn process_linear_phase_chunks(
-        &mut self,
-        params: &PhantomEqParams,
-        live: &impl ParamRead,
-        left: &mut [f32],
-        right: &mut [f32],
-        char_mode: CharacterMode,
-        auto_gain_en: bool,
-        final_gain: f32,
-        solo_target: f32,
-        solo_placement: ChannelTarget,
-    ) {
-        self.sync_linear_phase(params, live);
-        let mut pre_l_buf = [0.0_f32; LP_CHUNK_SIZE];
-        let mut pre_r_buf = [0.0_f32; LP_CHUNK_SIZE];
-        let total = left.len();
-        let mut offset = 0;
-
-        while offset < total {
-            let n = (total - offset).min(LP_CHUNK_SIZE);
-            pre_l_buf[..n].copy_from_slice(&left[offset..offset + n]);
-            pre_r_buf[..n].copy_from_slice(&right[offset..offset + n]);
-
-            self.linear_phase.process_block(
-                &mut left[offset..offset + n],
-                &mut right[offset..offset + n],
-            );
-
-            for k in 0..n {
-                let pre_l = pre_l_buf[k];
-                let pre_r = pre_r_buf[k];
-                let (cl, cr) =
-                    self.character
-                        .process_stereo(left[offset + k], right[offset + k], char_mode);
-                let (ag_l, ag_r) =
-                    self.auto_gain
-                        .process_stereo(pre_l, pre_r, cl, cr, auto_gain_en);
-                let (ml, mr) =
-                    self.solo
-                        .apply_sample(pre_l, pre_r, ag_l, ag_r, solo_target, solo_placement);
-                let out_l = ml * final_gain;
-                let out_r = mr * final_gain;
-                self.output_meter.process_sample(out_l, out_r);
-                left[offset + k] = out_l;
-                right[offset + k] = out_r;
-            }
-            offset += n;
-        }
-    }
-
-    pub fn meter_bypass_block(
-        &mut self,
-        left: &[f32],
-        right: &[f32],
-        shared_meters: &SharedMeters,
-    ) {
-        self.output_meter.process_block(left, right);
-        self.output_meter.publish(shared_meters);
-        shared_meters.store_makeup_db(0.0);
+        let makeup = if self.bypass_xfade.is_fully_bypassed() {
+            0.0
+        } else {
+            self.auto_gain.current_makeup_db()
+        };
+        shared_meters.store_makeup_db(makeup);
     }
 }

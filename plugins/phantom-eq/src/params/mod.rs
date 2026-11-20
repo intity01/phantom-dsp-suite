@@ -35,6 +35,9 @@ pub struct PhantomEqParams {
     #[id = "out_gain"]
     pub output_gain: FloatParam,
 
+    #[id = "gain_scale"]
+    pub gain_scale: FloatParam,
+
     #[id = "bypass"]
     pub bypass: BoolParam,
 
@@ -50,7 +53,7 @@ impl Default for PhantomEqParams {
         Self {
             editor_state: EguiState::from_size(1100, 640),
             mode: EnumParam::new("Processing Mode", ProcessingModeParam::ZeroLatency),
-            oversampling: EnumParam::new("Oversampling", OversamplingParam::X2),
+            oversampling: EnumParam::new("Oversampling", OversamplingParam::Off),
             character: EnumParam::new("Character", CharacterModeParam::Clean),
             auto_gain: BoolParam::new("Auto Gain", false),
             output_gain: FloatParam::new(
@@ -63,6 +66,16 @@ impl Default for PhantomEqParams {
             )
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            gain_scale: FloatParam::new(
+                "Gain Scale",
+                100.0,
+                FloatRange::Linear {
+                    min: 0.0,
+                    max: 200.0,
+                },
+            )
+            .with_unit("%")
+            .with_value_to_string(formatters::v2s_f32_rounded(0)),
             // `.make_bypass()` sets `ParamFlags::BYPASS` (VST3 `kIsBypass`): enables the Cubase insert
             // slot bypass button and the plugin window power button.
             bypass: BoolParam::new("Bypass", false).make_bypass(),

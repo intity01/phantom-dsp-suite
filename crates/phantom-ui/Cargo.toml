@@ -10,3 +10,4 @@ description = "Reusable dark-themed audio UI components and Lucide vector icons 
 phantom-dsp = { path = "../phantom-dsp" }
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false }
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+png = "0.18"

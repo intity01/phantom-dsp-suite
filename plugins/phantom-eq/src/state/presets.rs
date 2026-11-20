@@ -1,101 +1,16 @@
-//! 12 Built-In Mastering & Mixing Factory Presets + Offline `.peq` User Preset Disk I/O
+//! Offline `.peq` User Preset Disk I/O, Filename Sanitization & Deletion
 //! Pure Rust stdlib implementation (`%APPDATA%\PhantomDSP\PhantomEQ\Presets` / `~/.config/phantom-dsp/phantom-eq/presets`).
 
+pub use super::factory_presets::factory_presets;
 use super::snapshot::{BandSnapshotData, CharacterParam, EqPresetSnapshot, OversampleParam};
 use crate::params::{
     ChannelPlacementParam as Ch, FilterSlopeParam as Sl, FilterTypeParam as Ft,
     ProcessingModeParam as Pm, NUM_BANDS,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-const fn b(ft: Ft, sl: Sl, ch: Ch, freq: f32, gain: f32, q: f32) -> BandSnapshotData {
-    BandSnapshotData::active(ft, sl, ch, freq, gain, q)
-}
-
-const fn bd(ft: Ft, sl: Sl, ch: Ch, freq: f32, gain: f32, q: f32, dyn_r: f32) -> BandSnapshotData {
-    BandSnapshotData::active(ft, sl, ch, freq, gain, q).with_dynamics(dyn_r, -18.0)
-}
-
-const B2: &[BandSnapshotData] = &[
-    b(Ft::LowCut, Sl::Db24, Ch::Side, 30.0, 0.0, 0.71),
-    b(Ft::LowShelf, Sl::Db12, Ch::Mid, 38.0, 1.2, 0.71),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 260.0, -0.8, 1.8),
-    b(Ft::HighShelf, Sl::Db12, Ch::Side, 12000.0, 1.8, 0.71),
-];
-const B3: &[BandSnapshotData] = &[
-    b(Ft::LowCut, Sl::Db18, Ch::Stereo, 18.0, 0.0, 0.71),
-    b(Ft::FlatTilt, Sl::Db12, Ch::Stereo, 650.0, 1.2, 0.71),
-    b(Ft::HighShelf, Sl::Db12, Ch::Stereo, 16000.0, 1.0, 0.71),
-];
-const B4: &[BandSnapshotData] = &[
-    b(Ft::LowCut, Sl::Db18, Ch::Stereo, 85.0, 0.0, 0.71),
-    bd(Ft::Bell, Sl::Db12, Ch::Stereo, 270.0, -2.5, 1.4, -3.0),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 3200.0, 2.0, 1.2),
-    b(Ft::HighShelf, Sl::Db12, Ch::Stereo, 11000.0, 2.5, 0.71),
-];
-const B5: &[BandSnapshotData] = &[
-    b(Ft::LowCut, Sl::Db12, Ch::Stereo, 100.0, 0.0, 0.71),
-    bd(Ft::Bell, Sl::Db12, Ch::Stereo, 2800.0, 0.0, 2.5, -4.5),
-    bd(Ft::Bell, Sl::Db12, Ch::Stereo, 6800.0, 0.0, 3.0, -5.0),
-];
-const B6: &[BandSnapshotData] = &[
-    b(Ft::LowCut, Sl::Db24, Ch::Stereo, 28.0, 0.0, 0.71),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 58.0, 2.5, 1.4),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 340.0, -2.8, 1.6),
-    b(Ft::HighShelf, Sl::Db12, Ch::Stereo, 7500.0, 2.2, 0.71),
-];
-const B7: &[BandSnapshotData] = &[
-    b(Ft::LowCut, Sl::Db36, Ch::Stereo, 26.0, 0.0, 0.71),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 52.0, 3.0, 1.5),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 220.0, -4.0, 2.0),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 3500.0, 2.0, 1.4),
-];
-const B8: &[BandSnapshotData] = &[
-    b(Ft::LowCut, Sl::Db24, Ch::Stereo, 32.0, 0.0, 0.71),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 75.0, 2.2, 1.3),
-    bd(Ft::Bell, Sl::Db12, Ch::Stereo, 280.0, -2.0, 1.5, -3.0),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 1400.0, 2.8, 1.4),
-];
-const B9: &[BandSnapshotData] = &[
-    b(Ft::LowCut, Sl::Db18, Ch::Stereo, 75.0, 0.0, 0.71),
-    bd(Ft::Bell, Sl::Db12, Ch::Stereo, 180.0, -2.0, 1.6, -3.5),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 4500.0, 1.8, 1.2),
-    b(Ft::HighShelf, Sl::Db12, Ch::Stereo, 12000.0, 2.5, 0.71),
-];
-const B10: &[BandSnapshotData] = &[
-    b(Ft::Bell, Sl::Db12, Ch::Mid, 320.0, -2.2, 1.4),
-    b(Ft::LowCut, Sl::Db18, Ch::Side, 140.0, 0.0, 0.71),
-    b(Ft::Bell, Sl::Db12, Ch::Side, 2400.0, 2.0, 1.1),
-    b(Ft::HighShelf, Sl::Db12, Ch::Side, 9000.0, 3.0, 0.71),
-];
-const B11: &[BandSnapshotData] = &[b(Ft::LowCut, Sl::Brickwall, Ch::Stereo, 30.0, 0.0, 0.71)];
-const B12: &[BandSnapshotData] = &[
-    b(Ft::LowCut, Sl::Db24, Ch::Stereo, 380.0, 0.0, 0.71),
-    b(Ft::Bell, Sl::Db12, Ch::Stereo, 1200.0, 4.0, 1.6),
-    b(Ft::HighCut, Sl::Db24, Ch::Stereo, 3400.0, 0.0, 0.71),
-];
-
-/// Returns the 12 built-in Mastering, Mixing, and Creative Factory Presets.
-pub fn factory_presets() -> Vec<EqPresetSnapshot> {
-    use crate::params::CharacterModeParam::{Clean as Cl, SubtleAnalog as Sa, WarmTube as Wt};
-    use Pm::{LinearPhase as Lp, NaturalPhase as Np, ZeroLatency as Zl};
-    let p = EqPresetSnapshot::with_bands;
-    vec![
-        p("Default (Flat Empty)", "Init", Zl, Cl, &[]),
-        p("Mastering — Air & Sub Tightener", "Mastering", Lp, Sa, B2),
-        p("Mastering — Warm Analog Tilt", "Mastering", Np, Wt, B3),
-        p("Vocal — Lead Presence & De-Mud", "Vocals", Np, Cl, B4),
-        p("Vocal — Silky De-Harsh (Dynamic)", "Vocals", Zl, Cl, B5),
-        p("Drum Bus — Punch & Snap", "Drums", Zl, Sa, B6),
-        p("Kick & Sub — Tight Low End", "Drums", Zl, Cl, B7),
-        p("Bass Guitar — Sub Lock & Growl", "Bass", Zl, Wt, B8),
-        p("Acoustic Guitar — Sparkle & Body", "Guitars", Zl, Cl, B9),
-        p("Synth Pad — M/S Wide Stereo Halo", "Synths", Zl, Cl, B10),
-        p("Sub-Rumble Brickwall Cut (30 Hz)", "Utility", Zl, Cl, B11),
-        p("Lo-Fi Telephone Filter", "Creative", Zl, Wt, B12),
-    ]
-}
+const MAX_PRESET_STEM_LEN: usize = 80;
 
 /// Returns the platform-appropriate offline user preset directory.
 pub fn user_presets_dir() -> PathBuf {
@@ -112,31 +27,88 @@ pub fn user_presets_dir() -> PathBuf {
     std::env::temp_dir().join("phantom-eq-presets")
 }
 
+/// Sanitizes a custom user preset name into a safe cross-platform filename stem (no traversal).
+pub fn sanitize_preset_stem(name: &str) -> String {
+    let mut out = String::with_capacity(name.len().min(MAX_PRESET_STEM_LEN));
+    let mut prev_sep = false;
+    for ch in name.trim().chars() {
+        let mapped = if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ' ') {
+            ch
+        } else {
+            '_'
+        };
+        if mapped == '_' && prev_sep {
+            continue;
+        }
+        prev_sep = mapped == '_';
+        if out.len() >= MAX_PRESET_STEM_LEN {
+            break;
+        }
+        out.push(mapped);
+    }
+    let trimmed = out.trim_matches(|c| c == ' ' || c == '.' || c == '_');
+    if trimmed.is_empty()
+        || trimmed.eq_ignore_ascii_case("con")
+        || trimmed.eq_ignore_ascii_case("nul")
+    {
+        String::from("preset")
+    } else {
+        trimmed.to_string()
+    }
+}
+
 /// Saves a preset snapshot to disk in line-oriented `key=value` `.peq` format.
 pub fn save_user_preset(snapshot: &EqPresetSnapshot) -> io::Result<PathBuf> {
-    let dir = user_presets_dir();
-    fs::create_dir_all(&dir)?;
-    let safe: String = snapshot
-        .name
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ' ') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    let stem = safe.trim();
-    let file = if stem.is_empty() { "preset" } else { stem };
-    let path = dir.join(format!("{file}.peq"));
+    save_user_preset_in(&user_presets_dir(), snapshot)
+}
+
+/// Saves a preset snapshot into a specific directory (helper for tests & custom paths).
+pub fn save_user_preset_in(dir: &Path, snapshot: &EqPresetSnapshot) -> io::Result<PathBuf> {
+    fs::create_dir_all(dir)?;
+    let stem = sanitize_preset_stem(&snapshot.name);
+    let path = dir.join(format!("{stem}.peq"));
     fs::write(&path, serialize_peq_preset(snapshot))?;
     Ok(path)
 }
 
+/// Deletes a saved `.peq` user preset by name from the user presets directory.
+pub fn delete_user_preset(name: &str) -> io::Result<()> {
+    delete_user_preset_in(&user_presets_dir(), name)
+}
+
+/// Deletes a saved `.peq` user preset by name from a specific directory.
+pub fn delete_user_preset_in(dir: &Path, name: &str) -> io::Result<()> {
+    let direct = dir.join(format!("{}.peq", sanitize_preset_stem(name)));
+    if direct.is_file() {
+        return fs::remove_file(direct);
+    }
+    if let Ok(entries) = fs::read_dir(dir) {
+        for path in entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("peq"))
+        {
+            if let Ok(txt) = fs::read_to_string(&path) {
+                if parse_peq_preset(&txt).is_some_and(|p| p.name == name) {
+                    return fs::remove_file(path);
+                }
+            }
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("user preset not found: {name}"),
+    ))
+}
+
 /// Loads all saved `.peq` user presets from disk, sorted alphabetically by preset name.
 pub fn load_user_presets() -> Vec<EqPresetSnapshot> {
-    let Ok(entries) = fs::read_dir(user_presets_dir()) else {
+    load_user_presets_in(&user_presets_dir())
+}
+
+/// Loads all `.peq` presets from a specific directory, sorted alphabetically by preset name.
+pub fn load_user_presets_in(dir: &Path) -> Vec<EqPresetSnapshot> {
+    let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
     let mut list: Vec<EqPresetSnapshot> = entries
@@ -163,13 +135,14 @@ pub fn serialize_peq_preset(s: &EqPresetSnapshot) -> String {
         OversampleParam::X4 => 2,
     };
     let mut out = format!(
-        "format=PhantomEQ.v1\nname={}\nmode={}\noversampling={}\ncharacter={}\nauto_gain={}\noutput_gain_db={:.4}\nphase_invert={}\n",
+        "format=PhantomEQ.v1\nname={}\nmode={}\noversampling={}\ncharacter={}\nauto_gain={}\noutput_gain_db={:.4}\ngain_scale_pct={:.2}\nphase_invert={}\n",
         s.name.replace('\n', " "),
         mode_id,
         os_id,
         s.character.to_idx(),
         u8::from(s.auto_gain),
         s.output_gain_db,
+        s.gain_scale_pct,
         u8::from(s.phase_invert),
     );
     for (i, b) in s.bands.iter().enumerate().filter(|(_, b)| b.used) {
@@ -212,15 +185,18 @@ pub fn parse_peq_preset(content: &str) -> Option<EqPresetSnapshot> {
                 }
             }
             "oversampling" => {
-                snap.oversampling = match v.parse::<u8>().unwrap_or(1) {
-                    0 => OversampleParam::Off,
+                snap.oversampling = match v.parse::<u8>().unwrap_or(0) {
+                    1 => OversampleParam::X2,
                     2 => OversampleParam::X4,
-                    _ => OversampleParam::X2,
+                    _ => OversampleParam::Off,
                 }
             }
             "character" => snap.character = CharacterParam::from_idx(v.parse().unwrap_or(0)),
             "auto_gain" => snap.auto_gain = matches!(v, "1" | "true"),
             "output_gain_db" => snap.output_gain_db = v.parse().unwrap_or(0.0),
+            "gain_scale_pct" => {
+                snap.gain_scale_pct = v.parse::<f32>().unwrap_or(100.0).clamp(0.0, 200.0)
+            }
             "phase_invert" => snap.phase_invert = matches!(v, "1" | "true"),
             k if k.starts_with("band.") => {
                 if let Ok(idx) = k[5..].parse::<usize>() {
