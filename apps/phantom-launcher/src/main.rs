@@ -9,6 +9,7 @@ mod app_overlays;
 mod app_state;
 mod archive;
 mod brand;
+mod brand_raster;
 mod cli;
 mod discovery;
 mod hosts;
@@ -43,10 +44,16 @@ fn main() {
         std::process::exit(code);
     }
 
+    // Fixed-size window: the layout is designed for exactly this size, so no resizing or
+    // maximizing (the maximize button is removed and edges can't be dragged).
+    const WINDOW_SIZE: [f32; 2] = [1180.0, 760.0];
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Phantom DSP Suite — Offline Plugin Hub")
-        .with_inner_size([1180.0, 760.0])
-        .with_min_inner_size([920.0, 580.0]);
+        .with_inner_size(WINDOW_SIZE)
+        .with_min_inner_size(WINDOW_SIZE)
+        .with_max_inner_size(WINDOW_SIZE)
+        .with_resizable(false)
+        .with_maximize_button(false);
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(Arc::new(icon));
     }

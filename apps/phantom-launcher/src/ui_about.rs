@@ -1,6 +1,6 @@
 //! About center view featuring the brand sheet, icon scale showcase, and build info.
 
-use crate::brand::{draw_wordmark, BrandAssets};
+use crate::brand::BrandAssets;
 use crate::paths::host_dist_os_dir;
 use crate::theme::{ACCENT, ACCENT_SOFT, FILL_1, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY};
 use crate::ui_settings::{group_head, setting_row};
@@ -29,7 +29,7 @@ pub fn render_about_page(ui: &mut Ui, brand: &BrandAssets) {
                         brand.draw_logo_icon(ui, 132.0);
                         ui.add_space(24.0);
                         ui.vertical(|ui| {
-                            draw_wordmark(ui, 186.0, TEXT_PRIMARY, ACCENT);
+                            brand.draw_wordmark(ui, 186.0, TEXT_PRIMARY, ACCENT);
                             ui.add_space(4.0);
                             ui.label(
                                 RichText::new("dsp suite · v0.1.0 · MIT / Apache-2.0")

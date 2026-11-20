@@ -1,10 +1,12 @@
-//! Embedded Phantom Orb icon texture, Windows viewport IconData, and connected wordmark.
+//! Embedded Phantom Orb icon, Windows viewport IconData, and the connected wordmark,
+//! both drawn from pixel-exact textures (see `brand_raster`).
 
+use crate::brand_raster::{rasterize_wordmark, resample_rgba, wordmark_height_px};
 use eframe::egui::{
-    self, Color32, ColorImage, IconData, Painter, Pos2, Rect, Sense, Shape, Stroke, TextureHandle,
-    TextureOptions, Ui, Vec2,
+    self, Color32, IconData, Pos2, Rect, Sense, TextureHandle, TextureOptions, Ui, Vec2,
 };
-use std::f32::consts::PI;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 const ICON_256_PNG: &[u8] = include_bytes!("../assets/icons/icon-256.png");
 
@@ -45,91 +47,67 @@ pub fn load_window_icon() -> Option<IconData> {
 }
 
 pub struct BrandAssets {
-    pub logo_tex: TextureHandle,
+    icon: (Vec<u8>, usize, usize),
+    /// Textures rendered at an exact pixel size, keyed by what was drawn and how big.
+    cache: RefCell<HashMap<String, TextureHandle>>,
 }
 
 impl BrandAssets {
-    pub fn load(ctx: &egui::Context) -> Self {
+    pub fn load(_ctx: &egui::Context) -> Self {
         let (rgba, w, h) =
             decode_png_rgba(ICON_256_PNG).unwrap_or_else(|| (vec![10, 132, 255, 255], 1, 1));
-        let image = ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
-        let logo_tex = ctx.load_texture("phantom_launcher_logo", image, TextureOptions::LINEAR);
-        Self { logo_tex }
+        Self {
+            icon: (rgba, w as usize, h as usize),
+            cache: RefCell::new(HashMap::new()),
+        }
     }
 
     pub fn draw_logo_icon(&self, ui: &mut Ui, size: f32) {
-        ui.add(
-            egui::Image::new((self.logo_tex.id(), Vec2::splat(size)))
-                .fit_to_exact_size(Vec2::splat(size)),
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+        let ppp = ui.ctx().pixels_per_point();
+        let px = (size * ppp).round().max(1.0) as usize;
+        let tex = self.texture(ui.ctx(), format!("logo:{px}"), || {
+            let (rgba, w, h) = &self.icon;
+            resample_rgba(rgba, *w, *h, px, px)
+        });
+        paint_pixel_exact(ui, rect.min, &tex, ppp);
+    }
+
+    /// Draws the connected monoline `phantom` wordmark `width` points wide.
+    pub fn draw_wordmark(&self, ui: &mut Ui, width: f32, text: Color32, accent: Color32) {
+        let ppp = ui.ctx().pixels_per_point();
+        let px = (width * ppp).round().max(1.0) as usize;
+        let size = Vec2::new(px as f32, wordmark_height_px(px) as f32) / ppp;
+        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+        let key = format!(
+            "wordmark:{px}:{:?}:{:?}",
+            text.to_array(),
+            accent.to_array()
         );
+        let tex = self.texture(ui.ctx(), key, || rasterize_wordmark(px, text, accent));
+        paint_pixel_exact(ui, rect.min, &tex, ppp);
+    }
+
+    fn texture(
+        &self,
+        ctx: &egui::Context,
+        key: String,
+        make: impl FnOnce() -> egui::ColorImage,
+    ) -> TextureHandle {
+        self.cache
+            .borrow_mut()
+            .entry(key.clone())
+            .or_insert_with(|| ctx.load_texture(key, make(), TextureOptions::NEAREST))
+            .clone()
     }
 }
 
-/// Draws the connected monoline `phantom` wordmark (`198:56` viewBox) with round terminals.
-pub fn draw_wordmark(ui: &mut Ui, width: f32, text_color: Color32, accent_color: Color32) {
-    let height = width * (56.0 / 198.0);
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
-    paint_wordmark(ui.painter(), rect, text_color, accent_color);
-}
-
-fn paint_wordmark(painter: &Painter, rect: Rect, text_color: Color32, accent_color: Color32) {
-    let sx = rect.width() / 198.0;
-    let sy = rect.height() / 56.0;
-    let s = sx.min(sy);
-    let sw = (4.6 * s).max(1.2);
-    let stroke = Stroke::new(sw, text_color);
-    let pt = |x: f32, y: f32| Pos2::new(rect.left() + x * sx, rect.top() + y * sy);
-    let cap = |p: Pos2| painter.circle_filled(p, sw * 0.5, text_color);
-    let seg = |x1: f32, y1: f32, x2: f32, y2: f32| {
-        let a = pt(x1, y1);
-        let b = pt(x2, y2);
-        painter.line_segment([a, b], stroke);
-        cap(a);
-        cap(b);
-    };
-    let draw_arc = |cx: f32, cy: f32, r: f32, a0: f32, a1: f32| {
-        let steps = 14;
-        let pts: Vec<Pos2> = (0..=steps)
-            .map(|i| {
-                let a = a0 + (a1 - a0) * (i as f32 / steps as f32);
-                pt(cx + r * a.cos(), cy + r * a.sin())
-            })
-            .collect();
-        if let (Some(&first), Some(&last)) = (pts.first(), pts.last()) {
-            painter.add(Shape::line(pts, stroke));
-            cap(first);
-            cap(last);
-        }
-    };
-
-    // p
-    seg(4.0, 21.0, 4.0, 52.0);
-    painter.circle_stroke(pt(14.0, 30.0), 10.0 * s, stroke);
-    // h
-    seg(32.0, 6.0, 32.0, 40.0);
-    draw_arc(41.0, 30.0, 9.0, PI, 2.0 * PI);
-    seg(50.0, 30.0, 50.0, 40.0);
-    // a
-    painter.circle_stroke(pt(64.0, 30.0), 10.0 * s, stroke);
-    seg(74.0, 20.0, 74.0, 36.0);
-    draw_arc(78.0, 36.0, 4.0, PI, PI * 0.5);
-    // n
-    seg(84.0, 40.0, 84.0, 30.0);
-    draw_arc(93.0, 30.0, 9.0, PI, 2.0 * PI);
-    seg(102.0, 30.0, 102.0, 40.0);
-    // t
-    seg(112.0, 10.0, 112.0, 34.0);
-    draw_arc(118.0, 34.0, 6.0, PI, PI * 0.5);
-    seg(118.0, 40.0, 120.0, 40.0);
-    seg(106.0, 20.0, 120.0, 20.0);
-    // o
-    painter.circle_stroke(pt(134.0, 30.0), 10.0 * s, stroke);
-    // m
-    seg(152.0, 40.0, 152.0, 30.0);
-    draw_arc(160.0, 30.0, 8.0, PI, 2.0 * PI);
-    seg(168.0, 30.0, 168.0, 40.0);
-    draw_arc(176.0, 30.0, 8.0, PI, 2.0 * PI);
-    seg(184.0, 30.0, 184.0, 40.0);
-    // Accent dot
-    painter.circle_filled(pt(191.0, 12.0), 4.5 * s, accent_color);
+/// Paints a texture 1:1 with screen pixels, snapping its corner to the pixel grid so it is
+/// never resampled (which is what blurs or distorts small marks).
+fn paint_pixel_exact(ui: &Ui, min: Pos2, tex: &TextureHandle, ppp: f32) {
+    let snapped = Pos2::new((min.x * ppp).round() / ppp, (min.y * ppp).round() / ppp);
+    let [w, h] = tex.size();
+    let rect = Rect::from_min_size(snapped, Vec2::new(w as f32, h as f32) / ppp);
+    let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+    ui.painter().image(tex.id(), rect, uv, Color32::WHITE);
 }
