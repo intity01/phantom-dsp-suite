@@ -22,6 +22,7 @@ pub enum ArtPattern {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BrowseGroup {
     Equalizer,
+    Vocal,
     Dynamics,
     Mastering,
 }
@@ -71,6 +72,28 @@ pub const AVAILABLE_PLUGINS: &[PluginManifest] = &[
         clap_file: "Phantom EQ.clap",
         hue: 205.0,
         pattern: ArtPattern::Rings,
+        formats: &["VST3", "CLAP"],
+    },
+    PluginManifest {
+        id: "phantom-vox",
+        name: "Phantom Vox",
+        version: "0.1.0",
+        category: "Vocal",
+        kind: "Vocal Doubler & Aligner",
+        browse_group: BrowseGroup::Vocal,
+        author: "Intity01 · Phantom DSP",
+        license: "MIT / Apache-2.0",
+        released: "2026-11-20",
+        release_notes: "Up to 4-voice doubler, live sidechain alignment, Align & Double mode, 2D voice field and phase meter.",
+        description: "Realtime vocal doubler with live sidechain alignment to a lead vocal",
+        status: PluginStatus::Ready,
+        vst3_bundle: "Phantom Vox.vst3",
+        vst3_win_bin: "Phantom Vox.vst3",
+        vst3_linux_bin: "Phantom Vox.so",
+        vst3_macos_bin: "Phantom Vox",
+        clap_file: "Phantom Vox.clap",
+        hue: 280.0,
+        pattern: ArtPattern::Wave,
         formats: &["VST3", "CLAP"],
     },
     PluginManifest {
@@ -223,9 +246,12 @@ mod tests {
 
     #[test]
     fn catalog_contains_ready_phantom_eq_and_planned_suite() {
-        assert_eq!(AVAILABLE_PLUGINS.len(), 5);
+        assert_eq!(AVAILABLE_PLUGINS.len(), 6);
         let eq = find_plugin("phantom-eq").expect("phantom-eq must exist");
         assert_eq!(eq.status, PluginStatus::Ready);
+        let vox = find_plugin("phantom-vox").expect("phantom-vox must exist");
+        assert_eq!(vox.status, PluginStatus::Ready);
+        assert_eq!(vox.clap_file, "Phantom Vox.clap");
         assert_eq!(eq.vst3_bundle, "Phantom EQ.vst3");
         assert_eq!(eq.clap_file, "Phantom EQ.clap");
         assert!(find_plugin("phantom-comp").is_some());

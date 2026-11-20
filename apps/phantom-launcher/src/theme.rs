@@ -1,8 +1,8 @@
 //! Apple Blue-Zinc Dark UI Theme (`#18181B` window, `#1F1F23` surface, `#0A84FF` accent).
 
 use eframe::egui::{
-    self, Color32, CornerRadius, FontId, Margin, Painter, Pos2, Rect, Response, RichText, Sense,
-    Stroke, Ui, Vec2, Visuals,
+    self, Color32, CornerRadius, FontId, Margin, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2,
+    Visuals,
 };
 
 pub const BG_WINDOW: Color32 = Color32::from_rgb(24, 24, 27); // #18181B
@@ -73,12 +73,32 @@ pub fn apply_suite_theme(ctx: &egui::Context) {
     ctx.set_style(style);
 }
 
-pub fn paint_window_glow(painter: &Painter, rect: Rect) {
-    let center = Pos2::new(rect.left() + 20.0, rect.top() + 10.0);
-    for i in 0..10 {
-        let r = 320.0_f32 - (i as f32) * 30.0;
-        painter.circle_filled(center, r, Color32::from_rgba_unmultiplied(10, 132, 255, 2));
+/// Window background plus the soft accent glow from the design
+/// (`radial-gradient(1200px 600px at -10% -20%, accent 8%, transparent 60%)`).
+/// Painted first on the background layer so every panel (with a transparent fill) sits on it.
+pub fn paint_window_backdrop(ctx: &egui::Context) {
+    let rect = ctx.screen_rect();
+    let p = ctx.layer_painter(egui::LayerId::background());
+    p.rect_filled(rect, CornerRadius::ZERO, BG_WINDOW);
+    let c = Pos2::new(
+        rect.left() - rect.width() * 0.10,
+        rect.top() - rect.height() * 0.20,
+    );
+    let (rx, ry) = (720.0_f32, 360.0_f32);
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(c, Color32::from_rgba_unmultiplied(10, 132, 255, 20));
+    let n = 72_u32;
+    for i in 0..=n {
+        let a = i as f32 / n as f32 * std::f32::consts::TAU;
+        mesh.colored_vertex(
+            c + Vec2::new(a.cos() * rx, a.sin() * ry),
+            Color32::TRANSPARENT,
+        );
     }
+    for i in 1..=n {
+        mesh.add_triangle(0, i, i + 1);
+    }
+    p.add(mesh);
 }
 
 pub fn draw_pill(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {

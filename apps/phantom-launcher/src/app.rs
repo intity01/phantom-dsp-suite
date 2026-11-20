@@ -8,7 +8,7 @@ use crate::installer::InstallOptions;
 use crate::manifest::{find_plugin, github_releases_url, BrowseGroup, AVAILABLE_PLUGINS};
 use crate::paths::InstallScope;
 use crate::platform::open_url;
-use crate::theme::{paint_window_glow, BG_SURFACE, BG_WINDOW, BORDER_SUBTLE};
+use crate::theme::{paint_window_backdrop, BG_SURFACE, BORDER_SUBTLE};
 use crate::ui_about::render_about_page;
 use crate::ui_art::ArtCache;
 use crate::ui_grid::render_browse_grid;
@@ -46,6 +46,7 @@ pub struct PhantomLauncherApp {
 
 impl eframe::App for PhantomLauncherApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        paint_window_backdrop(ctx);
         let visible = self.visible_plugins();
         self.handle_shortcuts(ctx, &visible);
 
@@ -61,6 +62,10 @@ impl eframe::App for PhantomLauncherApp {
             eq: AVAILABLE_PLUGINS
                 .iter()
                 .filter(|p| p.browse_group == BrowseGroup::Equalizer)
+                .count(),
+            vocal: AVAILABLE_PLUGINS
+                .iter()
+                .filter(|p| p.browse_group == BrowseGroup::Vocal)
                 .count(),
             dynamics: AVAILABLE_PLUGINS
                 .iter()
@@ -80,11 +85,10 @@ impl eframe::App for PhantomLauncherApp {
             .resizable(false)
             .frame(
                 egui::Frame::NONE
-                    .fill(BG_WINDOW)
+                    .fill(egui::Color32::TRANSPARENT)
                     .inner_margin(Margin::symmetric(10, 8)),
             )
             .show(ctx, |ui| {
-                paint_window_glow(ui.painter(), ctx.screen_rect());
                 render_sidebar(ui, &self.brand, &mut self.view, &mut self.scope, &counts);
             });
 
@@ -93,7 +97,7 @@ impl eframe::App for PhantomLauncherApp {
             .exact_height(52.0)
             .frame(
                 egui::Frame::NONE
-                    .fill(BG_WINDOW)
+                    .fill(egui::Color32::TRANSPARENT)
                     .inner_margin(Margin::symmetric(10, 10)),
             )
             .show(ctx, |ui| {
@@ -125,12 +129,16 @@ impl eframe::App for PhantomLauncherApp {
         egui::SidePanel::right("inspector")
             .exact_width(340.0)
             .resizable(false)
-            .frame(egui::Frame::NONE.fill(BG_WINDOW).inner_margin(Margin {
-                left: 4,
-                right: 10,
-                top: 0,
-                bottom: 10,
-            }))
+            .frame(
+                egui::Frame::NONE
+                    .fill(egui::Color32::TRANSPARENT)
+                    .inner_margin(Margin {
+                        left: 4,
+                        right: 10,
+                        top: 0,
+                        bottom: 10,
+                    }),
+            )
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(BG_SURFACE)
@@ -157,12 +165,16 @@ impl eframe::App for PhantomLauncherApp {
         }
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(BG_WINDOW).inner_margin(Margin {
-                left: 4,
-                right: 6,
-                top: 0,
-                bottom: 10,
-            }))
+            .frame(
+                egui::Frame::NONE
+                    .fill(egui::Color32::TRANSPARENT)
+                    .inner_margin(Margin {
+                        left: 4,
+                        right: 6,
+                        top: 0,
+                        bottom: 10,
+                    }),
+            )
             .show(ctx, |ui| {
                 egui::Frame::NONE
                     .fill(BG_SURFACE)

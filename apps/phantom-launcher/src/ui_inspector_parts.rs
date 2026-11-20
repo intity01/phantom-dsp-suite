@@ -77,24 +77,19 @@ pub fn render_facts_box(
                             .corner_radius(CornerRadius::same(6))
                             .inner_margin(Margin::symmetric(7, 2))
                             .show(ui, |ui| {
-                                ui.with_layout(
-                                    egui::Layout::left_to_right(egui::Align::Center),
-                                    |ui| {
-                                        ui.spacing_mut().item_spacing.x = 4.0;
-                                        ui.label(
-                                            RichText::new(fmt)
-                                                .font(FontId::proportional(11.0))
-                                                .strong()
-                                                .color(if fit {
-                                                    ACCENT_TEXT
-                                                } else {
-                                                    TEXT_TERTIARY
-                                                }),
-                                        );
-                                        if inst {
-                                            icon_widget(ui, IconName::Check, 10.5, GREEN);
-                                        }
-                                    },
+                                // Parent is right-to-left: add the check first so it ends up
+                                // after the label. A nested left-to-right layout here would
+                                // stretch the chip across the row and stack chips on top of
+                                // each other.
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                if inst {
+                                    icon_widget(ui, IconName::Check, 10.5, GREEN);
+                                }
+                                ui.label(
+                                    RichText::new(fmt)
+                                        .font(FontId::proportional(11.0))
+                                        .strong()
+                                        .color(if fit { ACCENT_TEXT } else { TEXT_TERTIARY }),
                                 );
                             });
                     }
