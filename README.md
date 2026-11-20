@@ -35,22 +35,32 @@ Phantom DSP Suite is structured as a modular Cargo workspace with strict separat
 ```mermaid
 flowchart TD
     DSP["crates/phantom-dsp<br/>Pure Rust DSP Math<br/>Biquad • Linear Phase FIR • Smoothing • Dynamics • M/S • OS • FFT"]
+    VOXDSP["crates/phantom-vox-dsp<br/>Pure Vocal DSP Core<br/>DTW Align • Pitch / YIN • SmartPitch • LPC Formant • Time Stretch • Doubler"]
     UI["crates/phantom-ui<br/>Dark Obsidian UI Toolkit<br/>Theme • Vector Icons • Editable Knobs • Spectrum & Curve Canvas"]
     EQ["plugins/phantom-eq<br/>Phantom EQ (VST3 / CLAP)<br/>NIH-plug Adapter • Mono+Stereo • Live Mirror • Modular Editor"]
+    VOX["plugins/phantom-vox<br/>Phantom Vox (VST3 / CLAP)<br/>Realtime Vocal Doubler • Live Sidechain Align • 2D Voice Field"]
+    STUDIO["apps/phantom-vox-studio<br/>Phantom Vox Studio (Standalone)<br/>Multi-Track Timeline • Sync Anchors • Protected Spans • Batch Export"]
     LAUNCHER["apps/phantom-launcher<br/>Phantom Launcher (GUI & CLI)<br/>1-Click Offline Installer • SHA-256 Verification"]
 
     DSP --> UI
     DSP --> EQ
     UI --> EQ
+    VOXDSP --> VOX
+    VOXDSP --> STUDIO
+    UI --> VOX
     EQ -. "packages VST3 / CLAP" .-> LAUNCHER
+    VOX -. "packages VST3 / CLAP" .-> LAUNCHER
 ```
 
-| Workspace Member         | Crate Type          | Responsibility                                                                  |
-| ------------------------ | ------------------- | ------------------------------------------------------------------------------- |
-| `crates/phantom-dsp`     | Library (`rlib`)    | Pure audio DSP algorithms — zero UI or host dependencies, fully unit-tested     |
-| `crates/phantom-ui`      | Library (`rlib`)    | Shared Dark Obsidian (`#101117` / `#38BDF8`) widgets, icons, and spectrum views |
-| `plugins/phantom-eq`     | `cdylib` + `rlib`   | Flagship 24-band dynamic parametric equalizer exporting VST3 and CLAP           |
-| `apps/phantom-launcher`  | Binary (`bin`)      | Cross-platform offline plugin hub & headless CLI installer with SHA-256 checks  |
+| Workspace Member          | Crate Type          | Responsibility                                                                  |
+| ------------------------- | ------------------- | ------------------------------------------------------------------------------- |
+| `crates/phantom-dsp`      | Library (`rlib`)    | Pure audio DSP algorithms — zero UI or host dependencies, fully unit-tested     |
+| `crates/phantom-vox-dsp`  | Library (`rlib`)    | Pure vocal DSP engine — DTW alignment, YIN pitch, SmartPitch, formant, doubler  |
+| `crates/phantom-ui`       | Library (`rlib`)    | Shared Dark Obsidian (`#101117` / `#38BDF8`) widgets, icons, and spectrum views |
+| `plugins/phantom-eq`      | `cdylib` + `rlib`   | Flagship 24-band dynamic parametric equalizer exporting VST3 and CLAP           |
+| `plugins/phantom-vox`     | `cdylib` + `rlib`   | Realtime vocal doubler & live sidechain alignment plugin exporting VST3 / CLAP  |
+| `apps/phantom-vox-studio` | Binary (`bin`)      | Standalone multi-track vocal alignment studio with timeline, anchors & export   |
+| `apps/phantom-launcher`   | Binary (`bin`)      | Cross-platform offline plugin hub & headless CLI installer with SHA-256 checks  |
 
 ---
 
@@ -80,15 +90,40 @@ flowchart TD
 
 ---
 
+## Vocal Suite: Phantom Vox & Phantom Vox Studio
+
+### Phantom Vox Plugin (`plugins/phantom-vox`)
+A clean-room VST3 / CLAP realtime vocal processor inspired by high-end alignment and artificial double-tracking workflows:
+- **Triple Operational Modes**:
+  - `Doubler` — Zero-latency multi-voice vocal doubler (up to 4 voices) with independent timing offsets, detuning, LPC-derived formant preservation, stereo field spread, and mono compatibility check.
+  - `LiveAlign` — Low-latency live monitoring alignment (2048-sample fixed ring delay with DAW PDC) matching incoming dub tracks to an external lead vocal sidechain in real time.
+  - `AlignAndDouble` — Cascaded live sidechain alignment feeding the multi-voice doubling engine.
+- **Dual Visualizer HUD**:
+  - Scrolling Guide sidechain (Cyan) vs. Dub input (Purple) dual-lane waveform monitor with live bipolar `±ms` offset readout.
+  - 2D Voice Spread Field visualizer plotting pan positions, pitch detune, and formant variations.
+  - Stereo phase correlation meter and bypass flag with zero allocation during audio processing.
+
+### Phantom Vox Studio Standalone (`apps/phantom-vox-studio`)
+A standalone offline multi-track vocal alignment workstation built with `eframe` / `egui`:
+- **Multi-Track Alignment Timeline** — Multi-lane visualization with layered waveforms (Guide Reference vs Dub Layer).
+- **YIN Pitch Contour & Phonetic Badges** — Realtime YIN pitch tracking overlay and phonetic classification badges (`Voiced`, `Sibilance`, `Breath`, `Transient`).
+- **Sync Anchors & Protected Regions** — Click-to-pin alignment markers and click-to-lock protected spans (preserving original timing and pitch for natural consonants).
+- **Phrase Confidence & Smart Alignment** — Acoustic feature extraction (RMS, spectral flux, ZCR, log-mel, MFCC) and asymmetric DTW alignment with confidence grading.
+- **Batch Aligned Export & Non-Destructive Projects** — Instant A/B mix audition, 32-step undo/redo, non-destructive `.pvox` JSON project save/load, and sample-accurate batch aligned WAV export.
+
+---
+
 ## Suite Roadmap
 
-| Plugin              | Category    | Status      | Formats     | Highlights                                                                                           |
-| ------------------- | ----------- | ----------- | ----------- | ---------------------------------------------------------------------------------------------------- |
-| **Phantom EQ**      | Equalizer   | **v0.1.0**  | VST3 / CLAP | 24-band Dynamic & Spectral EQ, Zero/Natural/Linear Phase, PDC Bypass, Mono+Stereo, Gain Scale & LUFS |
-| **Phantom Comp**    | Dynamics    | Planned     | VST3 / CLAP | Mastering & bus compressor with visual transfer curve & sidechain filter                             |
-| **Phantom Limiter** | Mastering   | Planned     | VST3 / CLAP | True Peak brickwall mastering limiter with EBU R128 loudness metering                                |
-| **Phantom MB**      | Multiband   | Planned     | VST3 / CLAP | Linear-phase multiband dynamic processor with per-band soloing                                       |
-| **Phantom Saturn**  | Saturation  | Planned     | VST3 / CLAP | Multiband warmth, tape, and tube harmonic saturation engine                                          |
+| Plugin                  | Category    | Status      | Formats          | Highlights                                                                                           |
+| ----------------------- | ----------- | ----------- | ---------------- | ---------------------------------------------------------------------------------------------------- |
+| **Phantom EQ**          | Equalizer   | **v0.1.0**  | VST3 / CLAP      | 24-band Dynamic & Spectral EQ, Zero/Natural/Linear Phase, PDC Bypass, Mono+Stereo, Gain Scale & LUFS |
+| **Phantom Vox**         | Vocal       | **v0.1.0**  | VST3 / CLAP      | Realtime Vocal Doubler, Live Sidechain Alignment, 2D Voice Field & Dual Waveform Monitor             |
+| **Phantom Vox Studio**  | Standalone  | **v0.1.0**  | Standalone App   | Multi-track vocal timeline, Sync Anchors, Protected Regions, YIN Pitch, Batch Aligned WAV Export     |
+| **Phantom Comp**        | Dynamics    | Planned     | VST3 / CLAP      | Mastering & bus compressor with visual transfer curve & sidechain filter                             |
+| **Phantom Limiter**     | Mastering   | Planned     | VST3 / CLAP      | True Peak brickwall mastering limiter with EBU R128 loudness metering                                |
+| **Phantom MB**          | Multiband   | Planned     | VST3 / CLAP      | Linear-phase multiband dynamic processor with per-band soloing                                       |
+| **Phantom Saturn**      | Saturation  | Planned     | VST3 / CLAP      | Multiband warmth, tape, and tube harmonic saturation engine                                          |
 
 ---
 
