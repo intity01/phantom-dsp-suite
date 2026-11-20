@@ -1,6 +1,6 @@
 //! Left macOS-inspired blended navigation sidebar with brand mark, scopes, and privacy badge.
 
-use crate::brand::{draw_wordmark, BrandAssets};
+use crate::brand::BrandAssets;
 use crate::theme::{
     ACCENT, ACCENT_TEXT, FILL_1, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
 };
@@ -64,7 +64,7 @@ pub fn render_sidebar(
         ui.add_space(6.0);
         brand.draw_logo_icon(ui, 36.0);
         ui.add_space(4.0);
-        draw_wordmark(ui, 94.0, TEXT_PRIMARY, ACCENT);
+        brand.draw_wordmark(ui, 94.0, TEXT_PRIMARY, ACCENT);
     });
     ui.add_space(12.0);
 
