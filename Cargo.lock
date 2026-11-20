@@ -2216,13 +2216,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "phantom-kit"
+version = "0.1.0"
+source = "git+https://github.com/intity01/phantom-kit#a0edd06038872ec76bbe8215c557727c7fd456cb"
+dependencies = [
+ "egui",
+ "png",
+]
+
+[[package]]
 name = "phantom-launcher"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
  "eframe",
  "flate2",
- "png",
+ "phantom-kit",
  "serde",
  "serde_json",
  "sha2",

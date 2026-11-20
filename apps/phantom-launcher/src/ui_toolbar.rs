@@ -1,10 +1,12 @@
 //! Top 52px titlebar with Ctrl+K / `/` search pill, offline catalog indicator, and quick actions.
 
-use crate::theme::{ACCENT, FILL_2, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY};
-use crate::ui_icons::{icon_only_button, icon_text_button, icon_widget, IconName};
 use crate::ui_sidebar::AppView;
 use eframe::egui::{
     self, CornerRadius, FontId, Id, Margin, RichText, Sense, Stroke, TextEdit, Ui, Vec2,
+};
+use phantom_kit::prelude::{icon_button, icon_text_button, show_icon, IconName};
+use phantom_kit::prelude::{
+    ACCENT, FILL_2, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
 };
 
 pub struct ToolbarEvents {
@@ -41,7 +43,7 @@ pub fn render_toolbar(
                 ui.set_width(pill_w);
                 ui.set_height(22.0);
                 ui.horizontal(|ui| {
-                    icon_widget(
+                    show_icon(
                         ui,
                         IconName::Search,
                         15.0,
@@ -87,7 +89,7 @@ pub fn render_toolbar(
                                     );
                                 });
                         } else {
-                            if icon_only_button(ui, IconName::X, 13.0, TEXT_SECONDARY)
+                            if icon_button(ui, IconName::X, 13.0, TEXT_SECONDARY)
                                 .on_hover_text("Clear search")
                                 .clicked()
                             {

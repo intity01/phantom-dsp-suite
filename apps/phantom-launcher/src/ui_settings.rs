@@ -3,12 +3,12 @@
 use crate::installer::InstallOptions;
 use crate::manifest::{github_releases_url, DEFAULT_GITHUB_REPO};
 use crate::paths::{InstallPaths, InstallScope};
-use crate::theme::{
-    draw_pill, draw_toggle_switch, quiet_button, FILL_1, FILL_3, GREEN, GREEN_SOFT, TEXT_PRIMARY,
+use eframe::egui::{self, Color32, CornerRadius, FontId, Margin, RichText, Stroke, TextEdit, Ui};
+use phantom_kit::prelude::{icon_text_button, IconName};
+use phantom_kit::prelude::{
+    pill, quiet_button, toggle_switch, FILL_1, FILL_3, GREEN, GREEN_SOFT, TEXT_PRIMARY,
     TEXT_SECONDARY, TEXT_TERTIARY,
 };
-use crate::ui_icons::{icon_text_button, IconName};
-use eframe::egui::{self, Color32, CornerRadius, FontId, Margin, RichText, Stroke, TextEdit, Ui};
 
 #[derive(Default)]
 pub struct SettingsEvents {
@@ -118,7 +118,7 @@ pub fn render_settings_page(
             setting_row(ui, |ui| {
                 row_copy(ui, "Install VST3 bundle", "Standard plugin format for Cubase, Ableton Live, FL Studio, REAPER");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if draw_toggle_switch(ui, &mut opts.install_vst3).changed() {
+                    if toggle_switch(ui, &mut opts.install_vst3).changed() {
                         ev.changed = true;
                     }
                 });
@@ -126,7 +126,7 @@ pub fn render_settings_page(
             setting_row(ui, |ui| {
                 row_copy(ui, "Install CLAP plugin", "Modern open standard supported by Bitwig Studio, REAPER & FL Studio");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if draw_toggle_switch(ui, &mut opts.install_clap).changed() {
+                    if toggle_switch(ui, &mut opts.install_clap).changed() {
                         ev.changed = true;
                     }
                 });
@@ -134,7 +134,7 @@ pub fn render_settings_page(
             setting_row(ui, |ui| {
                 row_copy(ui, "Check DAWs after install", "Rescan running DAWs and remind you to rescan inside open hosts");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if draw_toggle_switch(ui, auto_rescan_daws).changed() {
+                    if toggle_switch(ui, auto_rescan_daws).changed() {
                         ev.changed = true;
                     }
                 });
@@ -193,7 +193,7 @@ pub fn render_settings_page(
                     "Not built in. Phantom has no accounts and makes zero background network connections.",
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    draw_pill(ui, "Off forever", GREEN, GREEN_SOFT);
+                    pill(ui, "Off forever", GREEN, GREEN_SOFT);
                 });
             });
             ui.add_space(16.0);

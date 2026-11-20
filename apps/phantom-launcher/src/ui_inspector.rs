@@ -4,14 +4,14 @@ use crate::discovery::InstallScanResult;
 use crate::hosts::HostInfo;
 use crate::installer::InstallOptions;
 use crate::manifest::PluginManifest;
-use crate::theme::{
-    ACCENT_SOFT, ACCENT_TEXT, FILL_1, FILL_2, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
-};
 use crate::ui_art::ArtCache;
-use crate::ui_icons::{icon_widget, IconName};
 use crate::ui_inspector_parts::{render_actions, render_confirm_guard, render_facts_box};
 use crate::ui_log::LogEntry;
 use eframe::egui::{self, CornerRadius, FontId, Margin, RichText, Ui, Vec2};
+use phantom_kit::prelude::{show_icon, IconName};
+use phantom_kit::prelude::{
+    ACCENT_SOFT, ACCENT_TEXT, FILL_1, FILL_2, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfirmAction {
@@ -173,7 +173,7 @@ pub fn render_inspector(
                     }
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        icon_widget(ui, IconName::Terminal, 12.5, ACCENT_TEXT);
+                        show_icon(ui, IconName::Terminal, 12.5, ACCENT_TEXT);
                         if ui
                             .add(
                                 egui::Button::new(

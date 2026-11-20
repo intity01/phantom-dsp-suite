@@ -5,13 +5,13 @@ use crate::hosts::{host_supports_plugin, HostInfo};
 use crate::installer::InstallOptions;
 use crate::integrity::{format_file_size, short_fingerprint, VerificationStatus};
 use crate::manifest::{PluginManifest, PluginStatus, DEFAULT_GITHUB_REPO};
-use crate::theme::{
-    primary_blue_button, quiet_button, ACCENT_SOFT, ACCENT_TEXT, FILL_1, FILL_2, FILL_3, GREEN,
-    ORANGE, ORANGE_SOFT, RED, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
-};
-use crate::ui_icons::{icon_text_button, icon_widget, IconName};
 use crate::ui_inspector::{InspectorEvents, PendingConfirm};
 use eframe::egui::{self, Color32, CornerRadius, FontId, Margin, RichText, Stroke, Ui, Vec2};
+use phantom_kit::prelude::{icon_text_button, show_icon, IconName};
+use phantom_kit::prelude::{
+    primary_button, quiet_button, ACCENT_SOFT, ACCENT_TEXT, FILL_1, FILL_2, FILL_3, GREEN, ORANGE,
+    ORANGE_SOFT, RED, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
+};
 
 pub fn render_facts_box(
     ui: &mut Ui,
@@ -83,7 +83,7 @@ pub fn render_facts_box(
                                 // each other.
                                 ui.spacing_mut().item_spacing.x = 4.0;
                                 if inst {
-                                    icon_widget(ui, IconName::Check, 10.5, GREEN);
+                                    show_icon(ui, IconName::Check, 10.5, GREEN);
                                 }
                                 ui.label(
                                     RichText::new(fmt)
@@ -156,7 +156,7 @@ pub fn render_confirm_guard(ui: &mut Ui, conf: &PendingConfirm, ev: &mut Inspect
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                icon_widget(ui, IconName::Alert, 16.0, ORANGE);
+                show_icon(ui, IconName::Alert, 16.0, ORANGE);
                 ui.label(
                     RichText::new(format!(
                         "{} {} open",
@@ -178,7 +178,7 @@ pub fn render_confirm_guard(ui: &mut Ui, conf: &PendingConfirm, ev: &mut Inspect
             );
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if primary_blue_button(ui, "Continue anyway", false).clicked() {
+                if primary_button(ui, "Continue anyway", false).clicked() {
                     ev.confirm_continue = true;
                 }
                 if quiet_button(ui, "Not now").clicked() {
@@ -198,7 +198,7 @@ pub fn render_actions(
     let repo = format!("https://github.com/{DEFAULT_GITHUB_REPO}");
     if plugin.status == PluginStatus::Planned {
         ui.add_enabled_ui(false, |ui| {
-            let _ = primary_blue_button(ui, "Planned (Roadmap)", true);
+            let _ = primary_button(ui, "Planned (Roadmap)", true);
         });
         ui.add_space(6.0);
         if icon_text_button(ui, IconName::Code, "View Source Repository", TEXT_PRIMARY).clicked() {
@@ -217,7 +217,7 @@ pub fn render_actions(
         "Install"
     };
     ui.add_enabled_ui(can_install, |ui| {
-        if primary_blue_button(ui, primary_label, true).clicked() {
+        if primary_button(ui, primary_label, true).clicked() {
             if s.has_update() {
                 ev.update_id = Some(plugin.id);
             } else {

@@ -67,3 +67,6 @@ desktop.ini
 *.profraw
 *.profdata
 coverage/
+
+# Local-only Cargo overrides (e.g. phantom-kit path patch)
+.cargo/config.toml

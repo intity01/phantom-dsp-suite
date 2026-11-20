@@ -4,17 +4,16 @@ use crate::discovery::InstallScanResult;
 use crate::hosts::{host_supports_plugin, HostInfo};
 use crate::integrity::format_file_size;
 use crate::manifest::{PluginManifest, PluginStatus};
-use crate::theme::{
-    paint_vertical_fade, BG_SURFACE, FILL_1, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY,
-    TEXT_TERTIARY,
-};
 use crate::ui_art::ArtCache;
-use crate::ui_icons::{draw_icon, icon_widget, IconName};
 use crate::ui_sidebar::BrowseScope;
 use crate::ui_tile::render_tile;
 use eframe::egui::{
     self, Color32, CornerRadius, FontId, Margin, Pos2, RichText, Sense, Stroke, Ui, Vec2,
 };
+use phantom_kit::prelude::{
+    paint_edge_fade, BG_SURFACE, FILL_1, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
+};
+use phantom_kit::prelude::{paint_icon, show_icon, IconName};
 use std::collections::HashMap;
 
 const SCROLL_GUTTER: f32 = 14.0;
@@ -88,7 +87,7 @@ pub fn render_browse_grid(
                 ui.painter()
                     .rect_filled(sync_r, CornerRadius::same(7), FILL_1);
             }
-            draw_icon(
+            paint_icon(
                 ui.painter(),
                 sync_r.center(),
                 15.0,
@@ -203,7 +202,7 @@ pub fn render_browse_grid(
 
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                icon_widget(ui, IconName::Zip, 15.0, TEXT_TERTIARY);
+                show_icon(ui, IconName::Zip, 15.0, TEXT_TERTIARY);
                 ui.label(
                     RichText::new(
                         "Have a plugin .zip already? Drop it anywhere on this window to install offline.",
@@ -220,12 +219,12 @@ pub fn render_browse_grid(
     let painter = ui.painter_at(vp);
     if out.state.offset.y > 0.5 {
         let top = egui::Rect::from_min_size(vp.min, Vec2::new(vp.width(), EDGE_FADE));
-        paint_vertical_fade(&painter, top, BG_SURFACE, true);
+        paint_edge_fade(&painter, top, BG_SURFACE, true);
     }
     if out.state.offset.y < max_off - 0.5 {
         let bottom =
             egui::Rect::from_min_max(egui::pos2(vp.left(), vp.bottom() - EDGE_FADE), vp.max);
-        paint_vertical_fade(&painter, bottom, BG_SURFACE, false);
+        paint_edge_fade(&painter, bottom, BG_SURFACE, false);
     }
 
     ev
