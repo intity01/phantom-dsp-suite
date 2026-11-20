@@ -184,6 +184,7 @@ impl PhantomLauncherApp {
                 let in_scope = match self.scope {
                     BrowseScope::All => true,
                     BrowseScope::Equalizer => p.browse_group == BrowseGroup::Equalizer,
+                    BrowseScope::Vocal => p.browse_group == BrowseGroup::Vocal,
                     BrowseScope::Dynamics => p.browse_group == BrowseGroup::Dynamics,
                     BrowseScope::Mastering => p.browse_group == BrowseGroup::Mastering,
                     BrowseScope::Installed => {

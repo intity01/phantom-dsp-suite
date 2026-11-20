@@ -2,8 +2,7 @@
 
 use crate::brand::{draw_wordmark, BrandAssets};
 use crate::theme::{
-    ACCENT, ACCENT_TEXT, BG_WINDOW, FILL_1, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY,
-    TEXT_TERTIARY,
+    ACCENT, ACCENT_TEXT, FILL_1, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
 };
 use crate::ui_icons::{draw_icon, icon_widget, IconName};
 use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Pos2, Sense, Ui, Vec2};
@@ -20,6 +19,7 @@ pub enum AppView {
 pub enum BrowseScope {
     All,
     Equalizer,
+    Vocal,
     Dynamics,
     Mastering,
     Installed,
@@ -31,6 +31,7 @@ impl BrowseScope {
         match self {
             Self::All => "All plugins",
             Self::Equalizer => "Equalizer",
+            Self::Vocal => "Vocal",
             Self::Dynamics => "Dynamics",
             Self::Mastering => "Mastering",
             Self::Installed => "Installed",
@@ -43,6 +44,7 @@ impl BrowseScope {
 pub struct SidebarCounts {
     pub all: usize,
     pub eq: usize,
+    pub vocal: usize,
     pub dynamics: usize,
     pub mastering: usize,
     pub installed: usize,
@@ -57,8 +59,6 @@ pub fn render_sidebar(
     scope: &mut BrowseScope,
     counts: &SidebarCounts,
 ) {
-    ui.painter()
-        .rect_filled(ui.max_rect(), CornerRadius::ZERO, BG_WINDOW);
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.add_space(6.0);
@@ -77,6 +77,7 @@ pub fn render_sidebar(
             IconName::Wave,
             counts.eq,
         ),
+        (BrowseScope::Vocal, "Vocal", IconName::Mic, counts.vocal),
         (
             BrowseScope::Dynamics,
             "Dynamics",

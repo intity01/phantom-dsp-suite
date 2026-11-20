@@ -3,7 +3,7 @@
 use crate::discovery::InstallScanResult;
 use crate::hosts::{host_supports_plugin, HostInfo};
 use crate::integrity::format_file_size;
-use crate::manifest::PluginManifest;
+use crate::manifest::{PluginManifest, PluginStatus};
 use crate::theme::{FILL_1, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY};
 use crate::ui_art::ArtCache;
 use crate::ui_icons::{draw_icon, icon_widget, IconName};
@@ -56,10 +56,19 @@ pub fn render_browse_grid(
                     .strong()
                     .color(TEXT_PRIMARY),
             );
+            let planned = visible
+                .iter()
+                .filter(|p| p.status == PluginStatus::Planned)
+                .count();
+            let ready = visible.len() - planned;
+            let mix = if planned == 0 {
+                format!("{ready} available")
+            } else {
+                format!("{ready} available · {planned} coming soon")
+            };
             ui.label(
                 RichText::new(format!(
-                    "{} plugins · {} installed on disk",
-                    visible.len(),
+                    "{mix} · {} installed on disk",
                     format_file_size(total_bytes)
                 ))
                 .font(FontId::proportional(12.5))
@@ -97,29 +106,31 @@ pub fn render_browse_grid(
                 .corner_radius(CornerRadius::same(9))
                 .inner_margin(Margin::same(2))
                 .show(ui, |ui| {
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        if daw_seg_btn(ui, "All", None, target_host_id.is_none(), false) {
-                            ev.select_host = Some(None);
+                    // Parent is right-to-left, so add segments in reverse to read
+                    // "All · DAW 1 · DAW 2" and keep the bar sized to its content.
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    for h in detected.into_iter().rev() {
+                        let compat = all_plugins
+                            .iter()
+                            .filter(|p| {
+                                p.status == PluginStatus::Ready && host_supports_plugin(Some(h), p)
+                            })
+                            .count();
+                        let have = all_plugins
+                            .iter()
+                            .filter(|p| {
+                                host_supports_plugin(Some(h), p)
+                                    && scans.get(p.id).is_some_and(|s| s.is_any_installed())
+                            })
+                            .count();
+                        let is_on = target_host_id == Some(h.id);
+                        if daw_seg_btn(ui, h.name, Some((have, compat)), is_on, h.running) {
+                            ev.select_host = Some(Some(h.id));
                         }
-                        for h in detected {
-                            let compat = all_plugins
-                                .iter()
-                                .filter(|p| host_supports_plugin(Some(h), p))
-                                .count();
-                            let have = all_plugins
-                                .iter()
-                                .filter(|p| {
-                                    host_supports_plugin(Some(h), p)
-                                        && scans.get(p.id).is_some_and(|s| s.is_any_installed())
-                                })
-                                .count();
-                            let is_on = target_host_id == Some(h.id);
-                            if daw_seg_btn(ui, h.name, Some((have, compat)), is_on, h.running) {
-                                ev.select_host = Some(Some(h.id));
-                            }
-                        }
-                    });
+                    }
+                    if daw_seg_btn(ui, "All", None, target_host_id.is_none(), false) {
+                        ev.select_host = Some(None);
+                    }
                 });
             ui.label(
                 RichText::new("Target DAW")
@@ -207,17 +218,26 @@ fn daw_seg_btn(
         Some((h, t)) => format!("{name}  {h}/{t}"),
         None => name.to_string(),
     };
-    let resp = ui.add(
-        egui::Button::new(
-            RichText::new(label)
-                .font(FontId::proportional(12.0))
-                .color(if active { TEXT_PRIMARY } else { TEXT_SECONDARY }),
+    let tip = match counts {
+        Some((h, t)) => format!(
+            "{h} of {t} available plugins for {name} are installed{}",
+            if running { " · open now" } else { "" }
+        ),
+        None => "Show plugins for every DAW".to_string(),
+    };
+    let resp = ui
+        .add(
+            egui::Button::new(
+                RichText::new(label)
+                    .font(FontId::proportional(12.0))
+                    .color(if active { TEXT_PRIMARY } else { TEXT_SECONDARY }),
+            )
+            .fill(if active { FILL_3 } else { Color32::TRANSPARENT })
+            .stroke(Stroke::NONE)
+            .corner_radius(CornerRadius::same(7))
+            .min_size(Vec2::new(0.0, 26.0)),
         )
-        .fill(if active { FILL_3 } else { Color32::TRANSPARENT })
-        .stroke(Stroke::NONE)
-        .corner_radius(CornerRadius::same(7))
-        .min_size(Vec2::new(0.0, 26.0)),
-    );
+        .on_hover_text(tip);
     if running {
         let dot = Pos2::new(resp.rect.left() + 5.0, resp.rect.center().y);
         ui.painter().circle_filled(dot, 2.8, GREEN);

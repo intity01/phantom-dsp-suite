@@ -10,6 +10,7 @@ use std::f32::consts::PI;
 pub enum IconName {
     Grid,
     Wave,
+    Mic,
     Keys,
     Meter,
     Disk,
@@ -139,6 +140,24 @@ pub fn draw_icon(painter: &Painter, center: Pos2, size: f32, name: IconName, col
                 StrokeKind::Middle,
             );
             painter.circle_stroke(pt(12.0, 12.0), 3.0 * s, st);
+        }
+        IconName::Mic => {
+            painter.rect_stroke(
+                Rect::from_min_max(pt(9.0, 3.0), pt(15.0, 14.0)),
+                CornerRadius::same((3.0 * s) as u8),
+                st,
+                StrokeKind::Middle,
+            );
+            poly(&[
+                (6.0, 11.0),
+                (6.8, 14.0),
+                (9.0, 16.3),
+                (12.0, 17.0),
+                (15.0, 16.3),
+                (17.2, 14.0),
+                (18.0, 11.0),
+            ]);
+            line(12.0, 17.0, 12.0, 21.0);
         }
         IconName::Up => {
             line(12.0, 19.0, 12.0, 6.0);
