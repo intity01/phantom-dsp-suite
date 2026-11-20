@@ -2,8 +2,11 @@
 members = [
     "crates/phantom-dsp",
     "crates/phantom-ui",
+    "crates/phantom-vox-dsp",
     "plugins/phantom-eq",
+    "plugins/phantom-vox",
     "apps/phantom-launcher",
+    "apps/phantom-vox-studio",
 ]
 resolver = "2"
 

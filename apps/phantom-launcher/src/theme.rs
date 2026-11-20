@@ -1,107 +1,225 @@
-//! Dark Obsidian UI theme matching Phantom EQ (`#101117` panel, `#161820` cards, `#38BDF8` cyan).
+//! Apple Blue-Zinc Dark UI Theme (`#18181B` window, `#1F1F23` surface, `#0A84FF` accent).
 
-use eframe::egui::{self, Color32, CornerRadius, FontId, Margin, RichText, Stroke, Ui, Visuals};
+use eframe::egui::{
+    self, Color32, CornerRadius, FontId, Margin, Painter, Pos2, Rect, Response, RichText, Sense,
+    Stroke, Ui, Vec2, Visuals,
+};
 
-pub const BG_PANEL: Color32 = Color32::from_rgb(16, 17, 23); // #101117
-pub const BG_CARD: Color32 = Color32::from_rgb(22, 24, 32); // #161820
-pub const BG_ELEVATED: Color32 = Color32::from_rgb(28, 31, 43); // #1C1F2B
-pub const BG_DISPLAY: Color32 = Color32::from_rgb(13, 14, 20); // #0D0E14
-pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(38, 42, 56); // #262A38
-pub const BORDER_LIGHT: Color32 = Color32::from_rgb(56, 63, 84); // #383F54
+pub const BG_WINDOW: Color32 = Color32::from_rgb(24, 24, 27); // #18181B
+pub const BG_SURFACE: Color32 = Color32::from_rgb(31, 31, 35); // #1F1F23
+pub const BG_CARD: Color32 = Color32::from_rgb(41, 41, 46);
+pub const BG_CARD_HOVER: Color32 = Color32::from_rgb(47, 47, 53);
+pub const BG_CARD_SELECTED: Color32 = Color32::from_rgb(29, 41, 56);
 
-pub const TEXT_BRIGHT: Color32 = Color32::from_rgb(241, 245, 249); // #F1F5F9
-pub const TEXT_MUTED: Color32 = Color32::from_rgb(148, 163, 184); // #94A3B8
-pub const TEXT_DIMMED: Color32 = Color32::from_rgb(100, 116, 139); // #64748B
+pub const FILL_1: Color32 = Color32::from_rgba_premultiplied(14, 14, 14, 14);
+pub const FILL_2: Color32 = Color32::from_rgba_premultiplied(23, 23, 23, 23);
+pub const FILL_3: Color32 = Color32::from_rgba_premultiplied(36, 36, 36, 36);
+pub const BORDER_SUBTLE: Color32 = Color32::from_rgba_premultiplied(18, 18, 18, 18);
+pub const BORDER_LIGHT: Color32 = Color32::from_rgba_premultiplied(32, 32, 32, 32);
 
-pub const ACCENT_CYAN: Color32 = Color32::from_rgb(56, 189, 248); // #38BDF8
-pub const ACCENT_CYAN_BG: Color32 = Color32::from_rgb(14, 52, 74);
-pub const ACCENT_GREEN: Color32 = Color32::from_rgb(16, 185, 129); // #10B981
-pub const ACCENT_GREEN_BG: Color32 = Color32::from_rgb(12, 54, 44);
-pub const ACCENT_AMBER: Color32 = Color32::from_rgb(245, 158, 11); // #F59E0B
-pub const ACCENT_AMBER_BG: Color32 = Color32::from_rgb(66, 44, 12);
-pub const ACCENT_RED: Color32 = Color32::from_rgb(239, 68, 68); // #EF4444
+pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(245, 245, 247); // #F5F5F7
+pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(163, 163, 174);
+pub const TEXT_TERTIARY: Color32 = Color32::from_rgb(112, 112, 122);
 
-pub fn apply_obsidian_theme(ctx: &egui::Context) {
+pub const ACCENT: Color32 = Color32::from_rgb(10, 132, 255); // #0A84FF
+pub const ACCENT_TOP: Color32 = Color32::from_rgb(45, 151, 255); // #2D97FF
+pub const ACCENT_TEXT: Color32 = Color32::from_rgb(94, 176, 255); // #5EB0FF
+pub const ACCENT_SOFT: Color32 = Color32::from_rgba_premultiplied(2, 21, 41, 41);
+
+pub const GREEN: Color32 = Color32::from_rgb(48, 209, 88); // #30D158
+pub const GREEN_SOFT: Color32 = Color32::from_rgba_premultiplied(7, 30, 12, 36);
+pub const ORANGE: Color32 = Color32::from_rgb(255, 159, 10); // #FF9F0A
+pub const ORANGE_SOFT: Color32 = Color32::from_rgba_premultiplied(31, 19, 1, 31);
+pub const RED: Color32 = Color32::from_rgb(255, 69, 58); // #FF453A
+
+pub fn apply_suite_theme(ctx: &egui::Context) {
     let mut visuals = Visuals::dark();
-    visuals.panel_fill = BG_PANEL;
-    visuals.window_fill = BG_CARD;
-    visuals.extreme_bg_color = BG_DISPLAY;
-    visuals.faint_bg_color = BG_ELEVATED;
+    visuals.panel_fill = BG_WINDOW;
+    visuals.window_fill = BG_SURFACE;
+    visuals.extreme_bg_color = Color32::from_rgb(20, 20, 24);
+    visuals.faint_bg_color = BG_CARD;
 
-    visuals.widgets.noninteractive.bg_fill = BG_CARD;
+    visuals.widgets.noninteractive.bg_fill = BG_SURFACE;
     visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_MUTED);
-    visuals.widgets.noninteractive.corner_radius = CornerRadius::same(6);
+    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
+    visuals.widgets.noninteractive.corner_radius = CornerRadius::same(8);
 
-    visuals.widgets.inactive.bg_fill = BG_ELEVATED;
-    visuals.widgets.inactive.weak_bg_fill = BG_ELEVATED;
+    visuals.widgets.inactive.bg_fill = Color32::from_rgb(46, 46, 52);
+    visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(46, 46, 52);
     visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_BRIGHT);
-    visuals.widgets.inactive.corner_radius = CornerRadius::same(6);
+    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
+    visuals.widgets.inactive.corner_radius = CornerRadius::same(8);
 
-    visuals.widgets.hovered.bg_fill = Color32::from_rgb(36, 41, 56);
-    visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(36, 41, 56);
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT_CYAN);
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, TEXT_BRIGHT);
-    visuals.widgets.hovered.corner_radius = CornerRadius::same(6);
+    visuals.widgets.hovered.bg_fill = Color32::from_rgb(56, 56, 64);
+    visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(56, 56, 64);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, BORDER_LIGHT);
+    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
+    visuals.widgets.hovered.corner_radius = CornerRadius::same(8);
 
-    visuals.widgets.active.bg_fill = ACCENT_CYAN_BG;
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT_CYAN);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, TEXT_BRIGHT);
-    visuals.widgets.active.corner_radius = CornerRadius::same(6);
+    visuals.widgets.active.bg_fill = ACCENT;
+    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT);
+    visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+    visuals.widgets.active.corner_radius = CornerRadius::same(8);
 
-    visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(56, 189, 248, 55);
-    visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT_CYAN);
+    visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(10, 132, 255, 115);
+    visuals.selection.stroke = Stroke::new(1.5_f32, ACCENT);
 
     ctx.set_visuals(visuals);
 
     let mut style = (*ctx.style()).clone();
     style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-    style.spacing.button_padding = egui::vec2(10.0, 5.0);
+    style.spacing.button_padding = egui::vec2(12.0, 5.0);
+    style.spacing.scroll.bar_width = 6.0;
     ctx.set_style(style);
 }
 
-pub fn draw_pill(ui: &mut Ui, text: &str, fg: Color32, bg: Color32, border: Color32) {
+pub fn paint_window_glow(painter: &Painter, rect: Rect) {
+    let center = Pos2::new(rect.left() + 20.0, rect.top() + 10.0);
+    for i in 0..10 {
+        let r = 320.0_f32 - (i as f32) * 30.0;
+        painter.circle_filled(center, r, Color32::from_rgba_unmultiplied(10, 132, 255, 2));
+    }
+}
+
+pub fn draw_pill(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {
     egui::Frame::NONE
         .fill(bg)
-        .stroke(Stroke::new(1.0_f32, border))
         .corner_radius(CornerRadius::same(10))
         .inner_margin(Margin::symmetric(8, 2))
         .show(ui, |ui| {
             ui.label(
                 RichText::new(text)
-                    .font(FontId::proportional(10.5))
+                    .font(FontId::proportional(11.0))
                     .strong()
                     .color(fg),
             );
         });
 }
 
-pub fn primary_button(ui: &mut Ui, text: &str, bg: Color32, fg: Color32) -> egui::Response {
-    ui.add(
+pub fn primary_blue_button(ui: &mut Ui, text: &str, full_width: bool) -> Response {
+    let min_w = if full_width {
+        ui.available_width()
+    } else {
+        112.0
+    };
+    let height = if full_width { 38.0 } else { 30.0 };
+    let radius = if full_width { 10 } else { 8 };
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(min_w, height), Sense::click());
+    if ui.is_rect_visible(rect) {
+        let enabled = ui.is_enabled();
+        let bg = if !enabled {
+            Color32::from_rgba_unmultiplied(10, 132, 255, 95)
+        } else if resp.is_pointer_button_down_on() {
+            Color32::from_rgb(8, 108, 214)
+        } else if resp.hovered() {
+            ACCENT_TOP
+        } else {
+            ACCENT
+        };
+        let p = ui.painter();
+        p.rect_filled(rect, CornerRadius::same(radius), bg);
+        if enabled {
+            p.line_segment(
+                [
+                    Pos2::new(rect.left() + 8.0, rect.top() + 1.0),
+                    Pos2::new(rect.right() - 8.0, rect.top() + 1.0),
+                ],
+                Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 255, 255, 52)),
+            );
+        }
+        let fg = if enabled {
+            Color32::WHITE
+        } else {
+            Color32::from_rgba_unmultiplied(255, 255, 255, 140)
+        };
+        p.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            text,
+            FontId::proportional(if full_width { 13.5 } else { 12.5 }),
+            fg,
+        );
+    }
+    resp
+}
+
+pub fn capsule_button(ui: &mut Ui, text: &str, accent_style: bool) -> Response {
+    let (bg, fg) = if accent_style {
+        (Color32::from_rgb(48, 50, 58), ACCENT_TEXT)
+    } else {
+        (Color32::TRANSPARENT, TEXT_SECONDARY)
+    };
+    let hover_bg = Color32::from_rgb(60, 62, 72);
+    let resp = ui.add(
         egui::Button::new(
             RichText::new(text)
                 .font(FontId::proportional(12.0))
                 .strong()
-                .color(fg),
+                .color(if ui.is_enabled() { fg } else { TEXT_TERTIARY }),
         )
         .fill(bg)
-        .stroke(Stroke::new(1.0_f32, bg))
-        .corner_radius(CornerRadius::same(6))
-        .min_size(egui::vec2(102.0, 28.0)),
-    )
+        .stroke(Stroke::NONE)
+        .corner_radius(CornerRadius::same(14))
+        .min_size(Vec2::new(72.0, 28.0)),
+    );
+    if resp.hovered() && ui.is_enabled() {
+        ui.painter()
+            .rect_filled(resp.rect, CornerRadius::same(14), hover_bg);
+        ui.painter().text(
+            resp.rect.center(),
+            egui::Align2::CENTER_CENTER,
+            text,
+            FontId::proportional(12.0),
+            if accent_style {
+                ACCENT_TEXT
+            } else {
+                TEXT_PRIMARY
+            },
+        );
+    }
+    resp
 }
 
-pub fn subtle_button(ui: &mut Ui, text: &str, fg: Color32, border: Color32) -> egui::Response {
+pub fn quiet_button(ui: &mut Ui, text: &str) -> Response {
     ui.add(
         egui::Button::new(
             RichText::new(text)
-                .font(FontId::proportional(11.5))
-                .color(fg),
+                .font(FontId::proportional(12.5))
+                .strong()
+                .color(TEXT_PRIMARY),
         )
-        .fill(BG_ELEVATED)
-        .stroke(Stroke::new(1.0_f32, border))
-        .corner_radius(CornerRadius::same(6))
-        .min_size(egui::vec2(0.0, 28.0)),
+        .fill(Color32::from_rgb(48, 48, 54))
+        .stroke(Stroke::new(1.0_f32, BORDER_SUBTLE))
+        .corner_radius(CornerRadius::same(8))
+        .min_size(Vec2::new(0.0, 30.0)),
     )
+}
+
+pub fn draw_toggle_switch(ui: &mut Ui, on: &mut bool) -> Response {
+    let (rect, mut resp) = ui.allocate_exact_size(Vec2::new(40.0, 24.0), Sense::click());
+    if resp.clicked() {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    if ui.is_rect_visible(rect) {
+        let track = if *on {
+            ACCENT
+        } else {
+            Color32::from_rgb(62, 62, 68)
+        };
+        let p = ui.painter();
+        p.rect_filled(rect, CornerRadius::same(12), track);
+        let cx = if *on {
+            rect.right() - 12.0
+        } else {
+            rect.left() + 12.0
+        };
+        p.circle_filled(
+            Pos2::new(cx, rect.center().y + 1.0),
+            10.0,
+            Color32::from_rgba_unmultiplied(0, 0, 0, 80),
+        );
+        p.circle_filled(Pos2::new(cx, rect.center().y), 10.0, Color32::WHITE);
+    }
+    resp
 }

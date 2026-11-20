@@ -1,4 +1,4 @@
-//! Plugin suite catalog, bundle layout metadata, and GitHub release URL helpers.
+//! Plugin suite catalog, bundle layout metadata, artwork tokens, and GitHub release URL helpers.
 
 use crate::paths::host_dist_os_dir;
 use std::path::{Path, PathBuf};
@@ -11,12 +11,33 @@ pub enum PluginStatus {
     Planned,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArtPattern {
+    Rings,
+    Conic,
+    Grid,
+    Wave,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BrowseGroup {
+    Equalizer,
+    Dynamics,
+    Mastering,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct PluginManifest {
     pub id: &'static str,
     pub name: &'static str,
     pub version: &'static str,
     pub category: &'static str,
+    pub kind: &'static str,
+    pub browse_group: BrowseGroup,
+    pub author: &'static str,
+    pub license: &'static str,
+    pub released: &'static str,
+    pub release_notes: &'static str,
     pub description: &'static str,
     pub status: PluginStatus,
     pub vst3_bundle: &'static str,
@@ -24,7 +45,9 @@ pub struct PluginManifest {
     pub vst3_linux_bin: &'static str,
     pub vst3_macos_bin: &'static str,
     pub clap_file: &'static str,
-    pub accent_rgb: [u8; 3],
+    pub hue: f32,
+    pub pattern: ArtPattern,
+    pub formats: &'static [&'static str],
 }
 
 pub const AVAILABLE_PLUGINS: &[PluginManifest] = &[
@@ -33,20 +56,34 @@ pub const AVAILABLE_PLUGINS: &[PluginManifest] = &[
         name: "Phantom EQ",
         version: "0.1.0",
         category: "Equalizer",
-        description: "8-band dynamic parametric equalizer with Linear Phase FIR, M/S routing & anti-cramping oversampling",
+        kind: "24-Band Dynamic EQ",
+        browse_group: BrowseGroup::Equalizer,
+        author: "Intity01 · Phantom DSP",
+        license: "MIT / Apache-2.0",
+        released: "2026-11-19",
+        release_notes: "24-band Dynamic & Spectral EQ, Natural & Linear Phase FIR, EQ Match, Floating HUD, Piano Roll & EBU R128 LUFS metering.",
+        description: "24-band dynamic & spectral parametric equalizer with Linear Phase FIR, M/S routing & anti-cramping oversampling",
         status: PluginStatus::Ready,
         vst3_bundle: "Phantom EQ.vst3",
         vst3_win_bin: "Phantom EQ.vst3",
         vst3_linux_bin: "Phantom EQ.so",
         vst3_macos_bin: "Phantom EQ",
         clap_file: "Phantom EQ.clap",
-        accent_rgb: [56, 189, 248],
+        hue: 205.0,
+        pattern: ArtPattern::Rings,
+        formats: &["VST3", "CLAP"],
     },
     PluginManifest {
         id: "phantom-comp",
         name: "Phantom Comp",
         version: "0.1.0-planned",
         category: "Dynamics",
+        kind: "Mastering Compressor",
+        browse_group: BrowseGroup::Dynamics,
+        author: "Intity01 · Phantom DSP",
+        license: "MIT / Apache-2.0",
+        released: "Planned",
+        release_notes: "Visual transfer curve, lookahead detection & sidechain filter (on the roadmap).",
         description: "Mastering & bus compressor with visual transfer curve & sidechain filtering",
         status: PluginStatus::Planned,
         vst3_bundle: "Phantom Comp.vst3",
@@ -54,13 +91,21 @@ pub const AVAILABLE_PLUGINS: &[PluginManifest] = &[
         vst3_linux_bin: "Phantom Comp.so",
         vst3_macos_bin: "Phantom Comp",
         clap_file: "Phantom Comp.clap",
-        accent_rgb: [16, 185, 129],
+        hue: 155.0,
+        pattern: ArtPattern::Conic,
+        formats: &["VST3", "CLAP"],
     },
     PluginManifest {
         id: "phantom-limiter",
         name: "Phantom Limiter",
         version: "0.1.0-planned",
         category: "Mastering",
+        kind: "True Peak Limiter",
+        browse_group: BrowseGroup::Mastering,
+        author: "Intity01 · Phantom DSP",
+        license: "MIT / Apache-2.0",
+        released: "Planned",
+        release_notes: "Brickwall ISP limiting with ITU-R BS.1770-4 LUFS metering (on the roadmap).",
         description: "True Peak mastering limiter with EBU R128 loudness metering",
         status: PluginStatus::Planned,
         vst3_bundle: "Phantom Limiter.vst3",
@@ -68,13 +113,21 @@ pub const AVAILABLE_PLUGINS: &[PluginManifest] = &[
         vst3_linux_bin: "Phantom Limiter.so",
         vst3_macos_bin: "Phantom Limiter",
         clap_file: "Phantom Limiter.clap",
-        accent_rgb: [245, 158, 11],
+        hue: 35.0,
+        pattern: ArtPattern::Wave,
+        formats: &["VST3", "CLAP"],
     },
     PluginManifest {
         id: "phantom-mb",
         name: "Phantom MB",
         version: "0.1.0-planned",
         category: "Multiband",
+        kind: "Multiband Dynamics",
+        browse_group: BrowseGroup::Dynamics,
+        author: "Intity01 · Phantom DSP",
+        license: "MIT / Apache-2.0",
+        released: "Planned",
+        release_notes: "Linear-phase multiband crossover with per-band solo audition (on the roadmap).",
         description: "Linear-phase multiband dynamic processor with per-band soloing",
         status: PluginStatus::Planned,
         vst3_bundle: "Phantom MB.vst3",
@@ -82,13 +135,21 @@ pub const AVAILABLE_PLUGINS: &[PluginManifest] = &[
         vst3_linux_bin: "Phantom MB.so",
         vst3_macos_bin: "Phantom MB",
         clap_file: "Phantom MB.clap",
-        accent_rgb: [139, 92, 246],
+        hue: 265.0,
+        pattern: ArtPattern::Grid,
+        formats: &["VST3", "CLAP"],
     },
     PluginManifest {
         id: "phantom-saturn",
         name: "Phantom Saturn",
         version: "0.1.0-planned",
         category: "Saturation",
+        kind: "Harmonic Saturation",
+        browse_group: BrowseGroup::Mastering,
+        author: "Intity01 · Phantom DSP",
+        license: "MIT / Apache-2.0",
+        released: "Planned",
+        release_notes: "Multiband tape, tube & transformer warmth engine (on the roadmap).",
         description: "Multiband warmth, tape & tube harmonic saturation engine",
         status: PluginStatus::Planned,
         vst3_bundle: "Phantom Saturn.vst3",
@@ -96,7 +157,9 @@ pub const AVAILABLE_PLUGINS: &[PluginManifest] = &[
         vst3_linux_bin: "Phantom Saturn.so",
         vst3_macos_bin: "Phantom Saturn",
         clap_file: "Phantom Saturn.clap",
-        accent_rgb: [239, 68, 68],
+        hue: 10.0,
+        pattern: ArtPattern::Conic,
+        formats: &["VST3", "CLAP"],
     },
 ];
 
@@ -135,10 +198,7 @@ pub fn resolve_vst3_binary_in_bundle(
         return Some(bundle_path.to_path_buf());
     }
     let nested = bundle_path.join(vst3_inner_binary_rel(plugin));
-    if nested.is_file() {
-        return Some(nested);
-    }
-    None
+    nested.is_file().then_some(nested)
 }
 
 pub fn github_releases_url(repo: &str) -> String {

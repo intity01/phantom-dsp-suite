@@ -1,11 +1,13 @@
 //! Plugin action executors returning structured activity log events for the GUI.
 
+use crate::archive::install_from_zip;
 use crate::discovery::{scan_plugin, InstallScanResult};
 use crate::installer::{install_plugin, uninstall_plugin, InstallOptions};
 use crate::integrity::{format_file_size, VerificationStatus};
 use crate::manifest::find_plugin;
 use crate::paths::InstallPaths;
 use crate::ui_log::LogLevel;
+use std::path::Path;
 
 pub struct ActionOutcome {
     pub messages: Vec<(LogLevel, String)>,
@@ -144,5 +146,51 @@ pub fn execute_verify(id: &'static str, paths: &InstallPaths) -> ActionOutcome {
         messages,
         needs_rescan: false,
         updated_scan: Some((plugin.id, scan)),
+    }
+}
+
+pub fn execute_zip_install(
+    zip_path: &Path,
+    paths: &InstallPaths,
+    opts: InstallOptions,
+) -> ActionOutcome {
+    let mut messages = Vec::new();
+    match install_from_zip(zip_path, paths, opts) {
+        Ok(rep) => {
+            messages.push((
+                LogLevel::Success,
+                format!(
+                    "Installed {} file(s) from {} (Archive SHA-256: {})",
+                    rep.extracted_files.len(),
+                    zip_path.display(),
+                    rep.archive_sha256
+                ),
+            ));
+            if !rep.detected_plugin_ids.is_empty() {
+                messages.push((
+                    LogLevel::Info,
+                    format!("  Matched plugins: {}", rep.detected_plugin_ids.join(", ")),
+                ));
+            }
+            for f in &rep.extracted_files {
+                messages.push((LogLevel::Info, format!("  -> {}", f.display())));
+            }
+            ActionOutcome {
+                messages,
+                needs_rescan: true,
+                updated_scan: None,
+            }
+        }
+        Err(err) => {
+            messages.push((
+                LogLevel::Error,
+                format!("Archive install failed for {}: {err}", zip_path.display()),
+            ));
+            ActionOutcome {
+                messages,
+                needs_rescan: false,
+                updated_scan: None,
+            }
+        }
     }
 }

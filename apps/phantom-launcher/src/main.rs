@@ -1,24 +1,41 @@
 //! Phantom Launcher — Open-Source Audio Plugin Hub & 1-Click Offline Installer.
 //! Supports headless CLI mode (`--cli`, `--install <id>`, `--uninstall <id>`, `--verify <id>`)
-//! and the Dark Obsidian `eframe`/`egui` desktop GUI.
+//! and the native Blue-Zinc `eframe`/`egui` desktop GUI (zero WebView).
 
 mod app;
 mod app_actions;
+mod app_handlers;
+mod app_overlays;
+mod app_state;
+mod archive;
+mod brand;
 mod cli;
 mod discovery;
+mod hosts;
 mod installer;
 mod integrity;
 mod manifest;
 mod paths;
 mod platform;
+mod store;
 mod theme;
-mod ui_cards;
+mod ui_about;
+mod ui_art;
+mod ui_grid;
+mod ui_icons;
+mod ui_inspector;
+mod ui_inspector_parts;
 mod ui_log;
-mod ui_panels;
+mod ui_settings;
+mod ui_sidebar;
+mod ui_tile;
+mod ui_toolbar;
 
 use app::PhantomLauncherApp;
+use brand::load_window_icon;
 use cli::{handle_cli_args, CliMode};
 use eframe::egui;
+use std::sync::Arc;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -26,11 +43,16 @@ fn main() {
         std::process::exit(code);
     }
 
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("Phantom DSP Suite — Offline Plugin Hub")
+        .with_inner_size([1180.0, 760.0])
+        .with_min_inner_size([920.0, 580.0]);
+    if let Some(icon) = load_window_icon() {
+        viewport = viewport.with_icon(Arc::new(icon));
+    }
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("Phantom Launcher — Open-Source DSP Plugin Hub")
-            .with_inner_size([960.0, 720.0])
-            .with_min_inner_size([780.0, 540.0]),
+        viewport,
         ..Default::default()
     };
 

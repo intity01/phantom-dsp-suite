@@ -13,6 +13,7 @@
 # Packaged binary distributions (built locally or by GitHub Releases)
 /dist/
 dist/
+*.zip
 
 # Compiled audio plugin binaries & native libraries
 *.vst3
