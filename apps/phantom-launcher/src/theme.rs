@@ -5,11 +5,18 @@ use eframe::egui::{
     Visuals,
 };
 
+// Depth comes from tone steps, not outlines: window → shell → pane → card.
 pub const BG_WINDOW: Color32 = Color32::from_rgb(24, 24, 27); // #18181B
-pub const BG_SURFACE: Color32 = Color32::from_rgb(31, 31, 35); // #1F1F23
-pub const BG_CARD: Color32 = Color32::from_rgb(41, 41, 46);
-pub const BG_CARD_HOVER: Color32 = Color32::from_rgb(47, 47, 53);
-pub const BG_CARD_SELECTED: Color32 = Color32::from_rgb(29, 41, 56);
+pub const BG_SHELL: Color32 = Color32::from_rgb(28, 28, 32); // wraps Hub + Details
+pub const BG_SURFACE: Color32 = Color32::from_rgb(34, 34, 39); // each pane
+pub const BG_CARD: Color32 = Color32::from_rgb(42, 42, 48);
+pub const BG_CARD_HOVER: Color32 = Color32::from_rgb(49, 49, 56);
+pub const BG_CARD_SELECTED: Color32 = Color32::from_rgb(32, 46, 64);
+
+// Concentric corners: shell radius = pane radius + the gap between them.
+pub const SHELL_GAP: i8 = 8;
+pub const PANE_RADIUS: u8 = 18;
+pub const SHELL_RADIUS: u8 = PANE_RADIUS + SHELL_GAP as u8;
 
 pub const FILL_1: Color32 = Color32::from_rgba_premultiplied(14, 14, 14, 14);
 pub const FILL_2: Color32 = Color32::from_rgba_premultiplied(23, 23, 23, 23);
@@ -99,6 +106,21 @@ pub fn paint_window_backdrop(ctx: &egui::Context) {
         mesh.add_triangle(0, i, i + 1);
     }
     p.add(mesh);
+}
+
+/// One rounded, borderless shell behind the Hub and Details panes (no outline:
+/// the tone step from the window is enough to separate it).
+pub fn paint_content_shell(ctx: &egui::Context, left: f32, top: f32, inset: i8) {
+    let r = ctx.screen_rect();
+    let shell = egui::Rect::from_min_max(
+        Pos2::new(r.left() + left, r.top() + top),
+        Pos2::new(r.right() - inset as f32, r.bottom() - inset as f32),
+    );
+    ctx.layer_painter(egui::LayerId::background()).rect_filled(
+        shell,
+        CornerRadius::same(SHELL_RADIUS),
+        BG_SHELL,
+    );
 }
 
 pub fn draw_pill(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {
