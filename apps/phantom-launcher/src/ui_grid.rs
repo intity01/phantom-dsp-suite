@@ -4,7 +4,10 @@ use crate::discovery::InstallScanResult;
 use crate::hosts::{host_supports_plugin, HostInfo};
 use crate::integrity::format_file_size;
 use crate::manifest::{PluginManifest, PluginStatus};
-use crate::theme::{FILL_1, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY};
+use crate::theme::{
+    paint_vertical_fade, BG_SURFACE, FILL_1, FILL_3, GREEN, TEXT_PRIMARY, TEXT_SECONDARY,
+    TEXT_TERTIARY,
+};
 use crate::ui_art::ArtCache;
 use crate::ui_icons::{draw_icon, icon_widget, IconName};
 use crate::ui_sidebar::BrowseScope;
@@ -13,6 +16,9 @@ use eframe::egui::{
     self, Color32, CornerRadius, FontId, Margin, Pos2, RichText, Sense, Stroke, Ui, Vec2,
 };
 use std::collections::HashMap;
+
+const SCROLL_GUTTER: f32 = 14.0;
+const EDGE_FADE: f32 = 32.0;
 
 #[derive(Default)]
 pub struct GridEvents {
@@ -141,13 +147,17 @@ pub fn render_browse_grid(
     });
 
     ui.add_space(16.0);
-    let avail_w = ui.available_width();
+    // Leave a gutter so the scrollbar never sits on top of the right-hand column.
+    let avail_w = ui.available_width() - SCROLL_GUTTER;
     let gap = 16.0_f32;
     let cols = (((avail_w + gap) / (230.0 + gap)).floor() as usize).clamp(1, 4);
     ev.cols = cols;
     let card_w = ((avail_w - gap * (cols as f32 - 1.0)) / cols as f32).max(180.0);
 
-    egui::ScrollArea::vertical()
+    // egui lets scrolled content draw a few px past the viewport; clip exactly at the edge so
+    // the fades below cover everything.
+    ui.visuals_mut().clip_rect_margin = 0.0;
+    let out = egui::ScrollArea::vertical()
         .id_salt("browse_grid_scroll")
         .show(ui, |ui| {
             if visible.is_empty() {
@@ -203,6 +213,20 @@ pub fn render_browse_grid(
                 );
             });
         });
+
+    // Fade cards out at the viewport edges instead of slicing them with a hard line.
+    let vp = out.inner_rect;
+    let max_off = (out.content_size.y - vp.height()).max(0.0);
+    let painter = ui.painter_at(vp);
+    if out.state.offset.y > 0.5 {
+        let top = egui::Rect::from_min_size(vp.min, Vec2::new(vp.width(), EDGE_FADE));
+        paint_vertical_fade(&painter, top, BG_SURFACE, true);
+    }
+    if out.state.offset.y < max_off - 0.5 {
+        let bottom =
+            egui::Rect::from_min_max(egui::pos2(vp.left(), vp.bottom() - EDGE_FADE), vp.max);
+        paint_vertical_fade(&painter, bottom, BG_SURFACE, false);
+    }
 
     ev
 }
