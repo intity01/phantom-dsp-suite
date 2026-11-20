@@ -29,7 +29,11 @@ if ($Only) {
 
 if (-not $SkipBuild) {
     $pkgArgs = @($plugins.Keys | ForEach-Object { "-p", $_ }) + @("-p", "phantom-launcher")
-    & cargo build --release @pkgArgs
+    # Cargo reports progress on stderr, which Windows PowerShell turns into errors under
+    # "Stop". Judge the build by its exit code instead.
+    $ErrorActionPreference = "Continue"
+    & cargo build --release @pkgArgs 2>&1 | ForEach-Object { "$_" }
+    $ErrorActionPreference = "Stop"
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 }
 

@@ -213,10 +213,10 @@ pub fn draw_field_card(ui: &mut Ui, size: Vec2, p: &FieldViewParams, snap: &VoxT
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::same(10))
         .show(ui, |ui| {
-            ui.set_min_size(Vec2::new(
-                (size.x - 20.0).max(120.0),
-                (size.y - 20.0).max(120.0),
-            ));
+            // Pin the width: the right-to-left badge row below would otherwise grow the card
+            // to the whole window and push the other card out of view.
+            ui.set_width((size.x - 20.0).max(120.0));
+            ui.set_min_height((size.y - 20.0).max(120.0));
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new("STEREO VOCAL FIELD")
