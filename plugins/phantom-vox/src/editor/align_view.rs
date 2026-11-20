@@ -89,83 +89,89 @@ pub fn draw_align_card(
         badge_txt.to_string()
     };
 
-    egui::Frame::NONE
-        .fill(BG_CARD)
-        .stroke(Stroke::new(
-            1.0_f32,
-            Color32::from_rgba_unmultiplied(255, 255, 255, 22),
-        ))
-        .corner_radius(CornerRadius::same(8))
-        .inner_margin(Margin::same(10))
-        .show(ui, |ui| {
-            // Pin the width: the right-to-left badge row below would otherwise grow the card
-            // to the whole window and push the other card out of view.
-            ui.set_width((size.x - 20.0).max(120.0));
-            ui.set_min_height((size.y - 20.0).max(120.0));
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new("GUIDE VS DUB ALIGNMENT")
-                        .font(FontId::proportional(10.0))
-                        .strong()
-                        .color(TEXT_BRIGHT),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    egui::Frame::NONE
-                        .fill(with_alpha(badge_col, 38))
-                        .stroke(Stroke::new(1.0_f32, with_alpha(badge_col, 150)))
-                        .corner_radius(CornerRadius::same(4))
-                        .inner_margin(Margin::symmetric(6, 1))
-                        .show(ui, |ui| {
-                            ui.label(
-                                RichText::new(badge_label)
-                                    .font(FontId::proportional(8.8))
-                                    .strong()
-                                    .color(badge_col),
-                            );
-                        });
+    // The caller lays cards out in a horizontal row, and a frame inherits its parent's
+    // layout. Stack the card's contents top-down explicitly.
+    ui.vertical(|ui| {
+        egui::Frame::NONE
+            .fill(BG_CARD)
+            .stroke(Stroke::new(
+                1.0_f32,
+                Color32::from_rgba_unmultiplied(255, 255, 255, 22),
+            ))
+            .corner_radius(CornerRadius::same(8))
+            .inner_margin(Margin::same(10))
+            .show(ui, |ui| {
+                // Pin the width: the right-to-left badge row below would otherwise grow the card
+                // to the whole window and push the other card out of view.
+                ui.set_width((size.x - 22.0).max(120.0)); // 2 x (10 margin + 1 stroke)
+                ui.set_min_height((size.y - 22.0).max(120.0));
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("GUIDE VS DUB ALIGNMENT")
+                            .font(FontId::proportional(10.0))
+                            .strong()
+                            .color(TEXT_BRIGHT),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        egui::Frame::NONE
+                            .fill(with_alpha(badge_col, 38))
+                            .stroke(Stroke::new(1.0_f32, with_alpha(badge_col, 150)))
+                            .corner_radius(CornerRadius::same(4))
+                            .inner_margin(Margin::symmetric(6, 1))
+                            .show(ui, |ui| {
+                                ui.label(
+                                    RichText::new(badge_label)
+                                        .font(FontId::proportional(8.8))
+                                        .strong()
+                                        .color(badge_col),
+                                );
+                            });
+                    });
                 });
-            });
 
-            ui.add_space(4.0);
-            draw_offset_strip(ui, snap, mode);
-            ui.add_space(6.0);
+                ui.add_space(4.0);
+                draw_offset_strip(ui, snap, mode);
+                ui.add_space(6.0);
 
-            let wave_h = (ui.available_height() - 34.0).max(96.0);
-            let (wave_rect, _) =
-                ui.allocate_exact_size(Vec2::new(ui.available_width(), wave_h), Sense::hover());
-            let p = ui.painter();
-            p.rect_filled(wave_rect, CornerRadius::same(6), BG_DISPLAY);
-            p.rect_stroke(
-                wave_rect,
-                CornerRadius::same(6),
-                Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 255, 255, 22)),
-                StrokeKind::Inside,
-            );
-
-            let split_y = wave_rect.center().y;
-            let top_lane = Rect::from_min_max(wave_rect.min, Pos2::new(wave_rect.max.x, split_y));
-            let bot_lane = Rect::from_min_max(Pos2::new(wave_rect.min.x, split_y), wave_rect.max);
-            p.line_segment(
-                [
-                    Pos2::new(wave_rect.min.x, split_y),
-                    Pos2::new(wave_rect.max.x, split_y),
-                ],
-                Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 255, 255, 24)),
-            );
-            draw_wave_lane(p, top_lane, guide_wave, ACCENT_CYAN, "GUIDE SIDECHAIN");
-            draw_wave_lane(p, bot_lane, dub_wave, ACCENT_PURPLE, "DUB INPUT");
-
-            if !snap.sidechain_active {
-                p.text(
-                    top_lane.center(),
-                    Align2::CENTER_CENTER,
-                    "Route Lead Vocal to 'Guide' Sidechain",
-                    FontId::proportional(9.2),
-                    TEXT_DIMMED,
+                let wave_h = (ui.available_height() - 34.0).max(96.0);
+                let (wave_rect, _) =
+                    ui.allocate_exact_size(Vec2::new(ui.available_width(), wave_h), Sense::hover());
+                let p = ui.painter();
+                p.rect_filled(wave_rect, CornerRadius::same(6), BG_DISPLAY);
+                p.rect_stroke(
+                    wave_rect,
+                    CornerRadius::same(6),
+                    Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 255, 255, 22)),
+                    StrokeKind::Inside,
                 );
-            }
 
-            ui.add_space(5.0);
-            draw_peak_row(ui, snap);
-        });
+                let split_y = wave_rect.center().y;
+                let top_lane =
+                    Rect::from_min_max(wave_rect.min, Pos2::new(wave_rect.max.x, split_y));
+                let bot_lane =
+                    Rect::from_min_max(Pos2::new(wave_rect.min.x, split_y), wave_rect.max);
+                p.line_segment(
+                    [
+                        Pos2::new(wave_rect.min.x, split_y),
+                        Pos2::new(wave_rect.max.x, split_y),
+                    ],
+                    Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 255, 255, 24)),
+                );
+                draw_wave_lane(p, top_lane, guide_wave, ACCENT_CYAN, "GUIDE SIDECHAIN");
+                draw_wave_lane(p, bot_lane, dub_wave, ACCENT_PURPLE, "DUB INPUT");
+
+                if !snap.sidechain_active {
+                    p.text(
+                        top_lane.center(),
+                        Align2::CENTER_CENTER,
+                        "Route Lead Vocal to 'Guide' Sidechain",
+                        FontId::proportional(9.2),
+                        TEXT_DIMMED,
+                    );
+                }
+
+                ui.add_space(5.0);
+                draw_peak_row(ui, snap);
+            });
+    });
 }

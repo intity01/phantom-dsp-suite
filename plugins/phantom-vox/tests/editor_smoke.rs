@@ -53,6 +53,18 @@ fn editor_draws_several_frames() {
         let out = ctx.run(input, |ctx| {
             draw_editor(ctx, &setter, &mut state, &params, &shared)
         });
+        // Nothing may be painted past the window edge: in a fixed-size plugin window that
+        // means a card or row grew wider than its slot and pushed content out of view.
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(860.0, 520.0));
+        for clipped in &out.shapes {
+            let r = clipped.shape.visual_bounding_rect();
+            if r.is_positive() {
+                assert!(
+                    screen.expand(1.0).contains_rect(r),
+                    "frame {frame}: shape at {r:?} is drawn outside the {screen:?} window"
+                );
+            }
+        }
         let prims = ctx.tessellate(out.shapes, out.pixels_per_point);
         assert!(!prims.is_empty(), "frame {frame} painted nothing");
     }
