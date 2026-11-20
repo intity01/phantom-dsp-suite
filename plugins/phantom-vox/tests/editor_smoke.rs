@@ -36,6 +36,7 @@ fn editor_draws_several_frames() {
         live: Arc::new(LiveParamMirror::new(params.clone())),
         meters: Arc::new(SharedMeters::default()),
         telemetry: Arc::new(SharedVoxTelemetry::new()),
+        audition: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
     let gui = NullGui;
     let setter = ParamSetter::new(&gui);

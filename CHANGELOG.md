@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Phantom Vox Windows packaging**: `package_windows.ps1` builds the Windows plugins and lays them out under `dist/windows/` (VST3 bundle + CLAP), so the launcher can install Phantom Vox. The Windows release archive now ships Phantom Vox too, and its DLL exports are verified alongside Phantom EQ.
+- **Phantom Vox focus band**: a strip under the vocal stage sets which frequencies the doubled voices cover (12 dB/oct high-pass and low-pass on the doubled voices only). Drag either edge, double-click it to reset, or click a number to type it. The default (20 Hz to 20 kHz) leaves existing projects sounding the same.
+- **Phantom Vox compare controls**: `A` / `B` settings slots stored with the project, `Copy to A/B`, and `Hold: Original`, which plays the unprocessed vocal at the same loudness as Vox while held.
 
 ### Planned
 - **Phantom Comp** — Mastering & bus compressor with visual transfer curve and sidechain filtering.

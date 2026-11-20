@@ -1,8 +1,9 @@
 //! Slim Top Header Bar for Phantom Vox
 //!
 //! Layout: `PHANTOM VOX` | Mode tabs `DOUBLER` `LIVE ALIGN` `COMBO` | `2V / 4V` |
-//! `S M L` fixed window size presets | Lock icon + `BYPASS`.
+//! `A` `B` `Copy` `Hold: Original` | `S M L` window size presets | Lock icon + `BYPASS`.
 
+use super::compare::draw_compare_controls;
 use super::window_size::{apply_size_preset, preset_index_for_size, SIZE_PRESETS};
 use crate::live_mirror::LiveSetter;
 use crate::params::{PhantomVoxParams, VoicesParam, VoxModeParam};
@@ -14,6 +15,7 @@ use phantom_ui::{
     draw_lock_icon, draw_phantom_orb_icon, draw_phantom_wordmark, with_alpha, ACCENT_CYAN,
     ACCENT_GREEN, ACCENT_PURPLE, ACCENT_RED, BG_CARD, TEXT_BRIGHT, TEXT_DIMMED, TEXT_MUTED,
 };
+use std::sync::atomic::AtomicBool;
 
 fn mode_tab(ui: &mut Ui, label: &str, active: bool, accent: Color32, w: f32) -> bool {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 22.0), Sense::click());
@@ -57,7 +59,12 @@ fn mode_tab(ui: &mut Ui, label: &str, active: bool, accent: Color32, w: f32) -> 
     resp.clicked()
 }
 
-pub fn draw_header(ui: &mut Ui, setter: &LiveSetter, params: &PhantomVoxParams) {
+pub fn draw_header(
+    ui: &mut Ui,
+    setter: &LiveSetter,
+    params: &PhantomVoxParams,
+    audition: &AtomicBool,
+) {
     let mode = setter.read(&params.mode);
     let voices = setter.read(&params.voices);
     let bypass_val = setter.read(&params.bypass);
@@ -143,6 +150,9 @@ pub fn draw_header(ui: &mut Ui, setter: &LiveSetter, params: &PhantomVoxParams) 
                 ) {
                     setter.set_once(&params.voices, VoicesParam::FourVoices);
                 }
+
+                ui.separator();
+                draw_compare_controls(ui, setter, params, audition);
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let byp_txt = RichText::new(if bypass_val { "BYPASS ON" } else { "BYPASS" })

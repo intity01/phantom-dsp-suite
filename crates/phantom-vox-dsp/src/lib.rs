@@ -4,13 +4,16 @@ mod aiff_io;
 mod confidence;
 mod demo;
 mod doubler_dsp;
+mod doubler_params;
 mod dtw_core;
 mod dtw_pins;
+mod focus_band;
 mod formant;
 mod live_align;
 mod stretch_ops;
 
 pub mod doubler;
+pub use focus_band::{FocusBand, FOCUS_MAX_HZ, FOCUS_MIN_HZ};
 pub mod dtw_align;
 pub mod features;
 pub mod pitch;

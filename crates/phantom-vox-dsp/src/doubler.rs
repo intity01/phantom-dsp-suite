@@ -3,41 +3,14 @@
 
 use std::f32::consts::{PI, TAU};
 
-use serde::{Deserialize, Serialize};
-
 use crate::doubler_dsp::{read_delay_cubic, FormantBiquad, OnePole, DELAY_LEN, DELAY_MASK};
+use crate::focus_band::FocusBand;
+
+pub use crate::doubler_params::DoublerParams;
 
 pub use crate::live_align::{LiveSidechainAligner, LIVE_ALIGN_LATENCY_SAMPLES};
 
 const NUM_VOICES: usize = 4;
-
-/// Real-time parameter snapshot for `VocalDoublerEngine`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct DoublerParams {
-    pub timing_ms: f32,
-    pub detune_cents: f32,
-    pub formant_st: f32,
-    pub width: f32,
-    pub voices_4: bool,
-    pub sibilance_safe: bool,
-    pub mono_check: bool,
-    pub mix: f32,
-}
-
-impl Default for DoublerParams {
-    fn default() -> Self {
-        Self {
-            timing_ms: 12.0,
-            detune_cents: 10.0,
-            formant_st: 0.0,
-            width: 1.0,
-            voices_4: false,
-            sibilance_safe: true,
-            mono_check: false,
-            mix: 0.55,
-        }
-    }
-}
 
 #[derive(Clone, Copy)]
 struct VoiceState {
@@ -77,6 +50,7 @@ pub struct VocalDoublerEngine {
     lp1_r: OnePole,
     lp2_r: OnePole,
     voices: [VoiceState; NUM_VOICES],
+    focus: FocusBand,
     last_formant_st: f32,
     corr_a: f32,
     avg_lr: f32,
@@ -103,6 +77,7 @@ impl VocalDoublerEngine {
             lp1_r: OnePole::new(),
             lp2_r: OnePole::new(),
             voices,
+            focus: FocusBand::new(),
             last_formant_st: f32::NAN,
             corr_a: 0.99,
             avg_lr: 0.0,
@@ -134,6 +109,7 @@ impl VocalDoublerEngine {
             v.tilt_lo.reset();
             v.tilt_hi.reset();
         }
+        self.focus.reset();
         self.avg_lr = 0.0;
         self.avg_ll = 0.0;
         self.avg_rr = 0.0;
@@ -161,6 +137,8 @@ impl VocalDoublerEngine {
     ) {
         let n = in_l.len().min(in_r.len()).min(out_l.len()).min(out_r.len());
         self.sync_formant_filters(params.formant_st);
+        self.focus
+            .sync(params.focus_low_hz, params.focus_high_hz, self.sample_rate);
         for i in 0..n {
             let (l, r) = self.process_sample_stereo(in_l[i], in_r[i], params);
             out_l[i] = l;
@@ -178,6 +156,8 @@ impl VocalDoublerEngine {
     ) {
         let n = input.len().min(out_l.len()).min(out_r.len());
         self.sync_formant_filters(params.formant_st);
+        self.focus
+            .sync(params.focus_low_hz, params.focus_high_hz, self.sample_rate);
         for i in 0..n {
             let s = input[i];
             let (l, r) = self.process_sample_stereo(s, s, params);
@@ -253,7 +233,7 @@ impl VocalDoublerEngine {
         let width = p.width.clamp(0.0, 1.5);
         let mid = 0.5 * (wet_l + wet_r);
         let side = 0.5 * (wet_l - wet_r) * width;
-        (wet_l, wet_r) = (mid + side, mid - side);
+        (wet_l, wet_r) = self.focus.tick(mid + side, mid - side);
 
         let mix = p.mix.clamp(0.0, 1.0);
         let dry_gain = 1.0 - 0.55 * mix;

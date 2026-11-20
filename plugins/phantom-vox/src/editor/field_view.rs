@@ -3,8 +3,10 @@
 //! Renders a 180-degree vocal soundstage with Center Lead + animated L/R (and 2L/2R) Doubler
 //! voices driven by `timing_ms`, `detune_cents`, `formant_st`, `width_pct`, and `mono_check`.
 
+use super::focus_strip::{draw_focus_strip, FOCUS_STRIP_H};
 use super::phase_meter::draw_phase_correlation_bar;
-use crate::params::{VoicesParam, VoxModeParam};
+use crate::live_mirror::LiveSetter;
+use crate::params::{PhantomVoxParams, VoicesParam, VoxModeParam};
 use crate::telemetry::VoxTelemetrySnapshot;
 use nih_plug_egui::egui::{
     self, Align2, Color32, CornerRadius, FontId, Margin, Painter, Pos2, Rect, RichText, Sense,
@@ -202,7 +204,13 @@ fn draw_polar_stage(
     );
 }
 
-pub fn draw_field_card(ui: &mut Ui, size: Vec2, p: &FieldViewParams, snap: &VoxTelemetrySnapshot) {
+pub fn draw_field_card(
+    ui: &mut Ui,
+    size: Vec2,
+    p: &FieldViewParams,
+    snap: &VoxTelemetrySnapshot,
+    (setter, params): (&LiveSetter, &PhantomVoxParams),
+) {
     let time_s = ui.input(|i| i.time);
     // The caller lays cards out in a horizontal row, and a frame inherits its parent's
     // layout. Stack the card's contents top-down explicitly.
@@ -247,10 +255,13 @@ pub fn draw_field_card(ui: &mut Ui, size: Vec2, p: &FieldViewParams, snap: &VoxT
                 });
 
                 ui.add_space(4.0);
-                let polar_h = (ui.available_height() - 40.0).max(120.0);
+                let polar_h = (ui.available_height() - 54.0 - FOCUS_STRIP_H).max(110.0);
                 let (polar_rect, _) = ui
                     .allocate_exact_size(Vec2::new(ui.available_width(), polar_h), Sense::hover());
                 draw_polar_stage(ui.painter(), polar_rect, p, snap, time_s);
+
+                ui.add_space(6.0);
+                draw_focus_strip(ui, setter, params, p.mode != VoxModeParam::LiveAlign);
 
                 ui.add_space(6.0);
                 draw_phase_correlation_bar(ui, snap.phase_corr);

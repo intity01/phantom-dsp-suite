@@ -2256,6 +2256,7 @@ dependencies = [
  "phantom-dsp",
  "phantom-ui",
  "phantom-vox-dsp",
+ "serde",
 ]
 
 [[package]]

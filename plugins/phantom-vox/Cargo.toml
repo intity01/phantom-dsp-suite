@@ -13,5 +13,6 @@ crate-type = ["cdylib", "rlib"]
 phantom-vox-dsp = { path = "../../crates/phantom-vox-dsp" }
 phantom-dsp = { path = "../../crates/phantom-dsp" }
 phantom-ui = { path = "../../crates/phantom-ui" }
+serde = { version = "1.0", features = ["derive"] }
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false, features = ["vst3"] }
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
